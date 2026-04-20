@@ -31,12 +31,16 @@ model Session {
   status                 SessionStatus @default(created)
   createdAt              DateTime      @default(now()) @map("created_at")
   closedAt               DateTime?     @map("closed_at")
-  userName               String        @map("user_name")
-  userAge                Int           @map("user_age")
-  userFamilyContext      String        @map("user_family_context")
-  userLocation           String        @map("user_location")
-  userProfessionalMoment String        @map("user_professional_moment")
-  userTrigger            String        @map("user_trigger")
+  // Los campos del formulario inicial (§2.3) se rellenan en la transición
+  // `created` → `phase1_in_progress` vía POST /api/session/{token}/form.
+  // Nullable porque en el estado `created` la sesión ya existe (la creó el
+  // webhook de Stripe) pero aún no hay datos de usuario.
+  userName               String?       @map("user_name")
+  userAge                Int?          @map("user_age")
+  userFamilyContext      String?       @map("user_family_context")
+  userLocation           String?       @map("user_location")
+  userProfessionalMoment String?       @map("user_professional_moment")
+  userTrigger            String?       @map("user_trigger")
 
   phase1Responses Phase1Response[]
   phase1Handoff   Phase1Handoff?

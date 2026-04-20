@@ -6,8 +6,16 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
-Paso 1 — scaffolding y modelo de datos. Sin endpoints, sin IA, sin pagos
-todavía. Ver el orden de construcción en `docs/proyecto-completo.md` §7.1.
+Paso 2 — endpoints de creación de sesión y formulario inicial. Sin frontend,
+sin IA, sin pagos todavía. Ver el orden de construcción en
+`docs/proyecto-completo.md` §7.1.
+
+Endpoints activos:
+
+- `POST /api/session/create` — crea una sesión anónima (UUID v4) en estado
+  `created`. Protegido con el header `X-Session-Create-Secret`.
+- `POST /api/session/{token}/form` — recibe el formulario inicial (§2.3),
+  valida con Zod, guarda los datos y transiciona a `phase1_in_progress`.
 
 ## Stack
 
@@ -72,6 +80,43 @@ coach-ai/
 ├── docker-compose.yml    # Postgres local
 └── README.md
 ```
+
+## Paso 2 — smoke test
+
+Con la app corriendo en `localhost:3000` y un `SESSION_CREATE_SECRET` definido
+en `.env`:
+
+```bash
+SECRET="$(grep ^SESSION_CREATE_SECRET .env | cut -d= -f2- | tr -d '"')"
+
+# 1. crear sesión (devuelve { token, url })
+curl -sS -X POST http://localhost:3000/api/session/create \
+  -H "X-Session-Create-Secret: $SECRET" | tee /tmp/session.json
+TOKEN=$(jq -r .token /tmp/session.json)
+
+# 2. enviar el formulario inicial
+curl -sS -X POST "http://localhost:3000/api/session/$TOKEN/form" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Ana",
+    "age": 35,
+    "familyContext": "casada, un hijo de 6",
+    "location": "Madrid",
+    "professionalMoment": "autónoma",
+    "trigger": "Estoy dudando si cerrar mi consulta y volver por cuenta ajena. Llevo dos años arrastrando la decisión."
+  }'
+```
+
+Errores esperados:
+
+| Caso | Respuesta |
+| --- | --- |
+| `POST /create` sin header | 401 `UNAUTHORIZED` |
+| `POST /form` con body inválido (edad 10, trigger vacío) | 400 `INVALID_INPUT` + `details` |
+| `POST /form` con token inexistente | 404 `SESSION_NOT_FOUND` |
+| `POST /form` repetido sobre la misma sesión | 409 `INVALID_STATE` |
+
+Inspecciona la BD con `npm run db:studio` para ver el registro en `sessions`.
 
 ## Documentación del producto
 
