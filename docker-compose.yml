@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: coach-ai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: coach
+      POSTGRES_PASSWORD: coach
+      POSTGRES_DB: coach_ai_dev
+    ports:
+      - '5433:5432'
+    volumes:
+      - coach_ai_pg_data:/var/lib/postgresql/data
+
+volumes:
+  coach_ai_pg_data:

@@ -1,46 +1,80 @@
-# Documentación del proyecto Coach AI
+# Coach AI
 
-Este documento es el índice de toda la documentación que Claude Code necesita para desarrollar el proyecto. Todos los archivos deben estar presentes en el repositorio antes de iniciar el desarrollo, en la carpeta `/docs/` o equivalente.
+Aplicación web de una sesión única de coaching profesional asistida por IA,
+completamente anónima, sin registro ni persistencia más allá de la sesión.
+Especificación completa en [`docs/`](./docs/README.md).
 
-## Documentos obligatorios
+## Estado actual
 
-### 1. `proyecto-completo.md`
-Documento maestro del proyecto. Contiene flujo de usuario, arquitectura, modelo de datos, especificaciones técnicas y alcance del MVP. **Es la referencia principal.** Todos los demás documentos son anexos operativos que este documento referencia.
+Paso 1 — scaffolding y modelo de datos. Sin endpoints, sin IA, sin pagos
+todavía. Ver el orden de construcción en `docs/proyecto-completo.md` §7.1.
 
-### 2. `prompt-fase2.md`
-Prompt completo y validado del coach de Fase 2. Debe cargarse íntegro como `system` en las llamadas a la API de Anthropic para el coach principal. Ya validado en el piloto con dos sesiones reales (Daniel y Elena) y produce el comportamiento deseado.
+## Stack
 
-### 3. Los seis hand-offs de prueba
-Fixtures de test para validar la Fase 2 antes de que exista la Fase 1. Cada uno representa un perfil distinto que estresa el rol del coach en un eje diferente:
+- Next.js 15 (App Router) + TypeScript + Tailwind CSS
+- PostgreSQL 16
+- Prisma ORM
+- Node 20 LTS
 
-- `handoff-01-daniel.md` — autónomo potencial con autoengaño sobre preparación (perfil D-C alto).
-- `handoff-02-carmen.md` — relevo generacional con favoritismo familiar no admitido (perfil S dominante).
-- `handoff-03-elena.md` — ama de casa planteándose cambio vital (perfil I-S con baja autoexpresión).
-- `handoff-04-javier.md` — directivo ambicioso con coste familiar negado (perfil D-C puro).
-- `handoff-05-lucia.md` — joven con parálisis por análisis (perfil C dominante).
-- `handoff-06-tomas.md` — oferta internacional con consenso familiar asumido (perfil I-D).
+## Quickstart
 
-Estos seis hand-offs deben usarse como fixtures en el paso 5 del orden de construcción para validar que el coach de Fase 2 funciona antes de construir la Fase 1.
+Requisitos: Node 20+, Docker (para la Postgres local).
 
-### 4. `banco-items-disc.json`
-Banco fijo de 16 ítems DISC contextualizados (8 profesionales y 8 personales/familiares), con sus cuatro opciones cada uno mapeadas a los factores D, I, S, C. **Los mismos 16 ítems se usan en todas las sesiones de todos los usuarios, sin variación.** La comparabilidad del DISC depende de esta estabilidad. El fichero se integra como recurso estático en el código de la Fase 1.
+```bash
+# 1. instalar dependencias
+npm install
 
-## Documentos que se generarán durante el desarrollo
+# 2. levantar Postgres local (docker-compose, puerto 5433)
+npm run db:up
 
-Estos no existen todavía. Deben producirse en las fases tempranas del proyecto y añadirse a la documentación:
+# 3. configurar entorno
+cp .env.example .env
 
-### 5. `prompt-fase1-administracion.md` (tarea del paso 7)
-Prompt del agente conversacional que administra el DISC en Fase 1. La especificación está en la sección 5.1.2 del documento maestro; debe materializarse como archivo.
+# 4. aplicar la primera migración
+npm run db:migrate
 
-### 6. `prompt-fase1-sintesis.md` (tarea del paso 7)
-Prompt del agente que produce el hand-off estructurado tras el DISC. La especificación está en la sección 5.1.3 del documento maestro; debe materializarse como archivo.
+# 5. abrir Prisma Studio (opcional, para inspeccionar el schema)
+npm run db:studio
 
-### 7. `prompt-ia-auxiliar.md` (tarea del paso 5)
-Prompt de la IA auxiliar que corre en paralelo durante la Fase 2 actualizando el resumen estructurado y detectando hipótesis exploradas. La especificación está en la sección 5.5 del documento maestro.
+# 6. arrancar el servidor de dev
+npm run dev
+```
 
-## Orden de lectura recomendado para Claude Code
+La app estará disponible en `http://localhost:3000`.
 
-1. Leer `proyecto-completo.md` completo para entender visión, flujo y arquitectura.
-2. Leer `prompt-fase2.md` para entender el rol del coach principal.
-3. Leer uno o dos hand-offs (`handoff-01-daniel.md` y `handoff-03-elena.md` son los más reveladores) para entender la estructura del contrato de entrada de la Fase 2.
-4. Arrancar el desarrollo por el paso 1 del orden sugerido en la sección 7.1 del documento maestro.
+## Scripts
+
+| Script | Qué hace |
+| --- | --- |
+| `npm run dev` | Servidor de desarrollo Next.js |
+| `npm run build` | `prisma generate` + build de producción |
+| `npm run start` | Sirve el build de producción |
+| `npm run lint` | ESLint (Next) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run db:up` / `db:down` | Arranca/para Postgres local (docker-compose) |
+| `npm run db:migrate` | `prisma migrate dev` (nuevas migraciones en dev) |
+| `npm run db:migrate:deploy` | `prisma migrate deploy` (aplicar en prod/CI) |
+| `npm run db:generate` | Regenera el cliente Prisma |
+| `npm run db:studio` | Abre Prisma Studio |
+| `npm run db:reset` | Borra la DB y rehace migraciones (sólo dev) |
+| `npm run db:seed` | Ejecuta `prisma/seed.ts` (no-op en el Paso 1) |
+
+## Estructura
+
+```
+coach-ai/
+├── docs/                 # especificación completa del producto
+├── prisma/               # schema.prisma + migraciones (commiteadas)
+├── src/
+│   ├── app/              # Next.js App Router (placeholder por ahora)
+│   ├── lib/prisma.ts     # cliente Prisma singleton
+│   └── data/             # recursos estáticos consumidos por la app
+├── docker-compose.yml    # Postgres local
+└── README.md
+```
+
+## Documentación del producto
+
+La documentación completa (visión, flujo, arquitectura, prompts de las IAs,
+modelo de datos detallado, fixtures de test) vive en [`docs/`](./docs/).
+Empezar por [`docs/README.md`](./docs/README.md) como índice.

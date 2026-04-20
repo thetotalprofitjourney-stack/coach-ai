@@ -1,0 +1,390 @@
+{
+  "version": "1.0",
+  "descripcion": "Banco fijo de 16 ítems DISC contextualizados para la Fase 1 del producto Coach AI. 8 ítems de dominio profesional y 8 de dominio personal/familiar. Cada ítem presenta un escenario y cuatro opciones mapeadas a los factores D (dominancia), I (influencia), S (estabilidad) y C (cumplimiento). Las opciones están calibradas para ser socialmente aceptables y emocionalmente neutras; ninguna formulación peyorativa debe introducirse en revisiones posteriores.",
+  "items": [
+    {
+      "id": 1,
+      "dominio": "profesional",
+      "escenario": "Llevas varios años en un proyecto profesional que empieza a estabilizarse y funcionar sin sobresaltos. El equipo está cómodo, los resultados son buenos.",
+      "pregunta": "¿Qué tiendes a hacer primero?",
+      "opciones": {
+        "A": {
+          "texto": "Buscar un nuevo reto profesional, porque el crecimiento personal requiere terreno nuevo.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Aprovechar la calma para ampliar mi red de contactos y abrir conversaciones con gente del sector.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Consolidar lo logrado y profundizar en lo que ya funciona para hacerlo aún mejor.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Revisar con detalle los procesos actuales para optimizar lo que se pueda mejorar.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "dominio": "profesional",
+      "escenario": "En una reunión importante, un compañero presenta una idea sobre la que discrepas claramente. El resto del equipo parece aceptarla sin matices.",
+      "pregunta": "¿Cómo actúas?",
+      "opciones": {
+        "A": {
+          "texto": "Expongo mi discrepancia con argumentos en ese mismo momento, aunque vaya a contracorriente.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Intervengo con tono conciliador, planteando mis dudas como matices que enriquecen la propuesta.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Escucho con atención y hablo después con el compañero en privado para contrastar sin forzar el momento.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Pido ver los datos o el detalle antes de pronunciarme, porque no quiero opinar sin información suficiente.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "dominio": "profesional",
+      "escenario": "Te ofrecen liderar un proyecto nuevo con alta visibilidad pero con objetivos poco claros y plazos ajustados.",
+      "pregunta": "¿Cuál es tu primera reacción?",
+      "opciones": {
+        "A": {
+          "texto": "Lo acepto. La visibilidad compensa la incertidumbre y ya iré resolviendo sobre la marcha.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Lo acepto y empiezo a reunir a gente clave para construir el proyecto con apoyos desde el principio.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Pido unos días para valorarlo con calma, hablarlo con gente de confianza y ver si encaja con mi situación.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Pido antes clarificar objetivos, recursos y criterios de éxito. Sin eso, no me comprometo.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "dominio": "profesional",
+      "escenario": "Un miembro de tu equipo está rindiendo por debajo de lo esperado desde hace varias semanas.",
+      "pregunta": "¿Cómo abordas la situación?",
+      "opciones": {
+        "A": {
+          "texto": "Le convoco a una conversación directa esta misma semana para poner la situación sobre la mesa.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Busco un momento informal para charlar, entender qué le pasa y ver cómo puedo ayudarle a volver a su ritmo.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Observo un tiempo más antes de actuar. A veces la gente tiene rachas y conviene dar margen.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Reviso datos objetivos de su rendimiento, identifico dónde exactamente falla y se lo presento con hechos concretos.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "dominio": "profesional",
+      "escenario": "Aparece una oportunidad profesional que te atrae pero que implica riesgo económico durante los primeros meses.",
+      "pregunta": "¿Qué haces?",
+      "opciones": {
+        "A": {
+          "texto": "Decido rápido. Si la oportunidad me convence, el riesgo es parte del camino y hay que asumirlo.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Hablo con gente que haya pasado por algo similar y me dejo inspirar por sus experiencias antes de decidir.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Me tomo tiempo. Prefiero no precipitarme con algo que puede afectar a mi tranquilidad y la de los míos.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Construyo un plan con escenarios, números concretos y puntos de no retorno antes de comprometerme.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "dominio": "profesional",
+      "escenario": "Tu manera habitual de trabajar te está dando buenos resultados, pero un colega de confianza sugiere que quizá podrías hacerlo de otra forma.",
+      "pregunta": "¿Cómo recibes esa sugerencia?",
+      "opciones": {
+        "A": {
+          "texto": "La escucho pero me reafirmo. Si lo que hago funciona, no veo motivo suficiente para cambiar.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Me intereso por su visión y le propongo sentarnos un rato a hablarlo con calma.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Agradezco la aportación y la dejo reposar. Los cambios grandes se piensan despacio.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Le pido que me concrete en qué lo haría distinto y qué evidencia tiene de que funcionaría mejor.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "dominio": "profesional",
+      "escenario": "Tienes que tomar una decisión profesional importante y dispones de información parcial. Conseguir más datos llevaría tiempo que no tienes.",
+      "pregunta": "¿Cómo procedes?",
+      "opciones": {
+        "A": {
+          "texto": "Decido con lo que tengo. La parálisis por análisis suele costar más que una decisión imperfecta.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Llamo a dos o tres personas de confianza para contrastar mi intuición antes de moverme.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Escojo la opción que menos altere el statu quo hasta poder evaluarlo con más calma.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Reviso otra vez lo que tengo, priorizo variables y decido en función de la que más peso tiene objetivamente.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "dominio": "profesional",
+      "escenario": "En tu trabajo te piden cumplir un objetivo ambicioso en un plazo que consideras justo pero exigente.",
+      "pregunta": "¿Cómo lo afrontas?",
+      "opciones": {
+        "A": {
+          "texto": "Me comprometo sin dudar y organizo al equipo para empezar ya mismo a ejecutar.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Lo acepto y movilizo al equipo apelando a la oportunidad que supone lograrlo juntos.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Acepto el objetivo pero pido redistribuir carga para que nadie del equipo se vea desbordado.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Descompongo el objetivo en hitos medibles con sus fechas antes de decir que sí al plazo global.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "dominio": "personal_familiar",
+      "escenario": "Tienes una tensión prolongada con alguien cercano (pareja, familiar o amigo de toda la vida). Lleváis semanas sin hablar del tema abiertamente.",
+      "pregunta": "¿Qué haces?",
+      "opciones": {
+        "A": {
+          "texto": "Busco una conversación directa y clara para poner las cosas encima de la mesa y resolver.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Propongo quedar en un plan tranquilo donde la conversación salga de forma natural.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Espero a que pase. Estas cosas a veces se recomponen solas si no se fuerzan.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Me tomo un tiempo para pensar qué ha pasado exactamente y entender las razones antes de hablar con esa persona.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "dominio": "personal_familiar",
+      "escenario": "Estás planificando algo importante que afecta a tu familia (mudanza, cambio de trabajo, inversión grande).",
+      "pregunta": "¿Cómo tomas la decisión?",
+      "opciones": {
+        "A": {
+          "texto": "Decido yo y luego lo comparto. Si tengo clara la dirección, dar la decisión por hecha ahorra ruido.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Abro la conversación en una comida o cena, planteando la idea y viendo cómo reaccionan.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Hablo con cada persona afectada por separado para entender cómo les encaja antes de cerrar nada.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Preparo los datos relevantes, los presento en familia y decidimos en función de lo que objetivamente encaje mejor.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "dominio": "personal_familiar",
+      "escenario": "Un hijo, hermano o sobrino cercano está atravesando una mala racha y te pide opinión sobre qué hacer.",
+      "pregunta": "¿Qué le dices?",
+      "opciones": {
+        "A": {
+          "texto": "Le doy mi opinión clara, aunque no sea la que quiere oír. Es lo que yo esperaría de alguien que me quiere.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Le animo a ver la parte buena de lo que tiene entre manos y a rodearse de gente que le empuje hacia delante.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Le escucho sobre todo, y sólo comparto mi opinión si veo que realmente la pide y la va a recibir bien.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Le hago preguntas para que ordene los hechos él mismo antes de pronunciarme yo.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "dominio": "personal_familiar",
+      "escenario": "En una reunión familiar surge un tema incómodo que siempre genera discusión (política, una herencia, una vieja discrepancia).",
+      "pregunta": "¿Cómo reaccionas?",
+      "opciones": {
+        "A": {
+          "texto": "Entro en el debate si tengo una postura clara. Callar por no discutir no es mi estilo.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Intento reconducir la conversación hacia un terreno más ligero para que nadie termine enfadado.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Me mantengo al margen. No merece la pena remover algo que no vamos a resolver esa tarde.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Participo con calma, pidiendo matizaciones y datos a quien afirma cosas que me parecen imprecisas.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "dominio": "personal_familiar",
+      "escenario": "Tu pareja, o alguien muy cercano, te plantea un cambio en vuestra vida en común (mudaros, cambiar rutinas, asumir un gasto nuevo).",
+      "pregunta": "¿Cómo respondes?",
+      "opciones": {
+        "A": {
+          "texto": "Si me convence, decido rápido y nos ponemos en marcha. Si no me convence, lo digo igual de claro.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Le pido que me lo cuente con calma en un momento bueno, y lo vamos dando vueltas juntos.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Le pido tiempo para irme acostumbrando a la idea antes de pronunciarme. Los cambios necesitan reposo.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Le pido que concretemos: qué implica exactamente, qué costes, qué plazos, qué cambia en el día a día.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "dominio": "personal_familiar",
+      "escenario": "Tienes que elegir cómo dedicar un tiempo libre inesperado: un fin de semana entero sin compromisos.",
+      "pregunta": "¿Qué haces?",
+      "opciones": {
+        "A": {
+          "texto": "Aprovecho para hacer algo que llevaba tiempo queriendo hacer y que requiere empuje.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Monto un plan con gente. El tiempo sin compañía se me hace raro.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Me quedo en casa, descanso, estoy con los míos, hago las cosas que nunca da tiempo entre semana.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Lo planifico con antelación para aprovecharlo bien. Un fin de semana libre puede cundir mucho si se organiza.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "dominio": "personal_familiar",
+      "escenario": "Alguien de tu entorno cercano toma una decisión importante con la que no estás de acuerdo, pero es su vida.",
+      "pregunta": "¿Cómo actúas?",
+      "opciones": {
+        "A": {
+          "texto": "Le digo lo que pienso claramente. Después respeto su decisión, pero habiendo dicho lo que tenía que decir.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Le transmito mi preocupación en positivo y le hago sentir que estoy ahí pase lo que pase.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Lo respeto y no intervengo. Es su vida y no es asunto mío.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Le pregunto cómo ha llegado a esa decisión y qué ha considerado, para entenderlo antes de opinar.",
+          "factor": "C"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "dominio": "personal_familiar",
+      "escenario": "Atraviesas un momento personal difícil que te está pesando (una pérdida, un cambio no deseado, una incertidumbre prolongada).",
+      "pregunta": "¿Cómo lo gestionas?",
+      "opciones": {
+        "A": {
+          "texto": "Me pongo en acción. Hacer cosas me ayuda a procesar mejor que rumiar.",
+          "factor": "D"
+        },
+        "B": {
+          "texto": "Me rodeo de gente que quiero, hablo mucho del tema, comparto lo que me pasa.",
+          "factor": "I"
+        },
+        "C": {
+          "texto": "Lo llevo en silencio. Prefiero no cargar a los demás con lo que me pasa a mí.",
+          "factor": "S"
+        },
+        "D": {
+          "texto": "Intento entender bien qué me está pasando y por qué, antes de compartirlo con nadie o tomar decisiones.",
+          "factor": "C"
+        }
+      }
+    }
+  ]
+}
