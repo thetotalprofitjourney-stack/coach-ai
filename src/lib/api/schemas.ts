@@ -34,3 +34,27 @@ export type FormResponse = z.infer<typeof formResponseSchema>;
 
 // Validación del token en path params.
 export const sessionTokenSchema = z.string().uuid();
+
+// POST /api/dev/anthropic-ping ----------------------------------------------
+
+// Endpoint interno del Paso 4: llamada básica al SDK de Anthropic con prompt
+// caching activado. Lo invoca el operador manualmente para verificar
+// credenciales, caching y latencia. Ver docs/proyecto-completo.md §7.1.
+export const pingRequestSchema = z.object({
+  model: z.enum(['opus', 'sonnet', 'haiku']).default('opus'),
+  userPrompt: z.string().trim().min(1).max(500).default('ping'),
+});
+export type PingRequest = z.infer<typeof pingRequestSchema>;
+
+export const pingResponseSchema = z.object({
+  model: z.string(),
+  text: z.string(),
+  latencyMs: z.number().int().nonnegative(),
+  usage: z.object({
+    inputTokens: z.number().int().nonnegative(),
+    outputTokens: z.number().int().nonnegative(),
+    cacheCreationInputTokens: z.number().int().nonnegative(),
+    cacheReadInputTokens: z.number().int().nonnegative(),
+  }),
+});
+export type PingResponse = z.infer<typeof pingResponseSchema>;

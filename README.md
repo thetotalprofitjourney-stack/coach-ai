@@ -6,10 +6,11 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
-Paso 3 — frontend del formulario inicial. El usuario ya puede rellenar los
-seis campos de §2.3 en el navegador y enviarlos al backend. Sin IA, sin
-pagos, sin chat todavía. Ver el orden de construcción en
-`docs/proyecto-completo.md` §7.1.
+Paso 4 — integración con el SDK de Anthropic y prompt caching. Hay un
+endpoint interno que el operador puede golpear para verificar que la clave
+funciona y que la caché acierta en la segunda llamada. Sin chat todavía, sin
+prompts reales de Fase 1 ni Fase 2 — esos llegan en los Pasos 5 y 6. Ver el
+orden de construcción en `docs/proyecto-completo.md` §7.1.
 
 Endpoints activos:
 
@@ -17,6 +18,10 @@ Endpoints activos:
   `created`. Protegido con el header `X-Session-Create-Secret`.
 - `POST /api/session/{token}/form` — recibe el formulario inicial (§2.3),
   valida con Zod, guarda los datos y transiciona a `phase1_in_progress`.
+- `POST /api/dev/anthropic-ping` — endpoint interno del operador.
+  Hace una llamada real al SDK de Anthropic con prompt caching y devuelve
+  la respuesta, las métricas de `usage` y la latencia. Reutiliza el mismo
+  header `X-Session-Create-Secret`. No se invoca desde el frontend.
 
 Rutas activas:
 
@@ -128,6 +133,58 @@ Errores esperados:
 | `POST /form` repetido sobre la misma sesión | 409 `INVALID_STATE` |
 
 Inspecciona la BD con `npm run db:studio` para ver el registro en `sessions`.
+
+## Paso 4 — smoke test del endpoint Anthropic
+
+Requisitos:
+
+- `SESSION_CREATE_SECRET` definido en `.env` (se reutiliza como secreto del
+  operador para este endpoint).
+- `ANTHROPIC_API_KEY` definido en `.env` con una clave válida del operador.
+
+Este smoke test está pensado para ejecutarse contra producción una vez la
+clave esté desplegada. Hace dos llamadas idénticas para validar que el
+prompt caching acierta en la segunda:
+
+```bash
+SECRET="$(grep ^SESSION_CREATE_SECRET .env | cut -d= -f2- | tr -d '"')"
+HOST="http://localhost:3000"   # o la URL de producción
+
+# 1. Primera llamada: escritura de caché
+curl -sS -X POST "$HOST/api/dev/anthropic-ping" \
+  -H "X-Session-Create-Secret: $SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"haiku"}' | jq '.usage'
+
+# 2. Segunda llamada idéntica: lectura de caché
+curl -sS -X POST "$HOST/api/dev/anthropic-ping" \
+  -H "X-Session-Create-Secret: $SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"haiku"}' | jq '.usage'
+```
+
+Lo que esperas ver en `usage`:
+
+| Campo | 1ª llamada | 2ª llamada |
+| --- | --- | --- |
+| `inputTokens` | tokens uncached (pocos, solo el user message) | igual |
+| `cacheCreationInputTokens` | > 0 (el system prompt completo) | 0 |
+| `cacheReadInputTokens` | 0 | ≈ el `cacheCreationInputTokens` de la 1ª |
+| `outputTokens` | la respuesta del modelo | la respuesta del modelo |
+
+El body acepta `{"model": "opus"|"sonnet"|"haiku"}` (default `opus`) para
+probar los tres modelos usados en el doc §4: Opus 4.7 (coach de Fase 2),
+Sonnet 4.6 (síntesis del hand-off) y Haiku 4.5 (administrador DISC y
+auxiliar). También acepta `{"userPrompt": "..."}` (default `"ping"`).
+
+Errores esperados:
+
+| Caso | Respuesta |
+| --- | --- |
+| Sin header `X-Session-Create-Secret` | 401 `UNAUTHORIZED` |
+| `ANTHROPIC_API_KEY` ausente/inválida | 500 `INTERNAL` |
+| Body con `model` fuera del enum | 400 `INVALID_INPUT` |
+| Rate limit de Anthropic | 503 `INTERNAL` |
 
 ## Documentación del producto
 
