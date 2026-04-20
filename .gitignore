@@ -1,0 +1,27 @@
+# deps
+node_modules/
+
+# Next
+.next/
+out/
+
+# build artefacts
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# misc
+.DS_Store
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# NOTE: prisma/migrations/ is intentionally NOT ignored — it is the source of truth.
