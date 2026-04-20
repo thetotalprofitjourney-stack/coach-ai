@@ -6,8 +6,9 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
-Paso 2 — endpoints de creación de sesión y formulario inicial. Sin frontend,
-sin IA, sin pagos todavía. Ver el orden de construcción en
+Paso 3 — frontend del formulario inicial. El usuario ya puede rellenar los
+seis campos de §2.3 en el navegador y enviarlos al backend. Sin IA, sin
+pagos, sin chat todavía. Ver el orden de construcción en
 `docs/proyecto-completo.md` §7.1.
 
 Endpoints activos:
@@ -16,6 +17,13 @@ Endpoints activos:
   `created`. Protegido con el header `X-Session-Create-Secret`.
 - `POST /api/session/{token}/form` — recibe el formulario inicial (§2.3),
   valida con Zod, guarda los datos y transiciona a `phase1_in_progress`.
+
+Rutas activas:
+
+- `GET /session/{token}` — pantalla pública anónima. Si la sesión está en
+  `created` muestra el formulario inicial; si ya avanzó, muestra el
+  placeholder "Fase 1 en construcción"; si está `closed`, la pantalla de
+  sesión cerrada. Token inválido o inexistente → 404.
 
 ## Stack
 
@@ -81,7 +89,7 @@ coach-ai/
 └── README.md
 ```
 
-## Paso 2 — smoke test
+## Paso 3 — smoke test
 
 Con la app corriendo en `localhost:3000` y un `SESSION_CREATE_SECRET` definido
 en `.env`:
@@ -94,7 +102,10 @@ curl -sS -X POST http://localhost:3000/api/session/create \
   -H "X-Session-Create-Secret: $SECRET" | tee /tmp/session.json
 TOKEN=$(jq -r .token /tmp/session.json)
 
-# 2. enviar el formulario inicial
+# 2a. abrir el formulario en el navegador (Paso 3)
+echo "http://localhost:3000/session/$TOKEN"
+
+# 2b. (alternativa) enviar el formulario directamente por API
 curl -sS -X POST "http://localhost:3000/api/session/$TOKEN/form" \
   -H 'Content-Type: application/json' \
   -d '{
