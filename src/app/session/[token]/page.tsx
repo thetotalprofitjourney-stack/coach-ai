@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { sessionTokenSchema } from '@/lib/api/schemas';
 import { InitialForm } from './InitialForm';
+import { Phase1Chat } from './Phase1Chat';
 import { Phase1Placeholder } from './Phase1Placeholder';
 import { ClosedScreen } from './ClosedScreen';
 
@@ -29,6 +30,7 @@ export default async function SessionPage({
     case 'created':
       return <InitialForm token={tokenParse.data} />;
     case 'phase1_in_progress':
+      return <Phase1Chat token={tokenParse.data} />;
     case 'phase1_completed':
     case 'phase2_in_progress':
     case 'phase2_completed':
