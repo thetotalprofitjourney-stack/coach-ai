@@ -1,25 +1,19 @@
 import type { NextRequest } from 'next/server';
-import { prisma } from '@/lib/prisma';
 import { requireSessionCreateSecret } from '@/lib/api/auth';
 import { jsonError, jsonOk } from '@/lib/api/response';
-import type { CreateSessionResponse } from '@/lib/api/schemas';
+import { createSessionRow } from '@/lib/session/create';
 
 // POST /api/session/create
-// Crea una sesión anónima en estado `created` y devuelve el token + URL a la
-// que debe redirigirse al usuario tras el pago. Ver docs/proyecto-completo.md
-// §2.2 y §3.1: es el puente entre el sistema de facturación y el sistema de
-// sesiones. En producción (Paso 10) lo invoca el webhook de Stripe.
+// Wrapper HTTP delgado sobre `createSessionRow()`. Mantenido por
+// compatibilidad con los smoke tests y como fallback del operador; el
+// camino productivo es el webhook de Stripe, que llama al helper
+// directamente sin pasar por HTTP (Paso 10, §2.2 / §3.1).
 export async function POST(req: NextRequest) {
   const unauthorized = requireSessionCreateSecret(req);
   if (unauthorized) return unauthorized;
 
   try {
-    const session = await prisma.session.create({ data: {} });
-    const origin = process.env.APP_PUBLIC_URL ?? req.nextUrl.origin;
-    const payload: CreateSessionResponse = {
-      token: session.id,
-      url: `${origin}/session/${session.id}`,
-    };
+    const payload = await createSessionRow();
     return jsonOk(payload, 201);
   } catch (err) {
     console.error('POST /api/session/create failed', err);
