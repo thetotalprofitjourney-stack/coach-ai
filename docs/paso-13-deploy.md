@@ -342,3 +342,241 @@ docker compose -f docker-compose.prod.yml up -d
 # Seguir logs en vivo
 docker compose -f docker-compose.prod.yml logs -f app
 ```
+
+---
+
+## §6 Reverse proxy con Nginx
+
+La app habla HTTP plano en `127.0.0.1:3000`. Nginx termina HTTPS en
+443 y reenvía al container. **Timeouts largos obligatorios**: la
+síntesis de Fase 1 y los turnos de Fase 2 con extended thinking
+tardan entre 60 y 180 segundos; con los defaults de Nginx (60 s) se
+cortarían.
+
+### §6.1 Vhost inicial para obtener el certificado
+
+Crear `/etc/nginx/sites-available/coach-ai` (editar como `sudo`):
+
+```nginx
+# Redirección HTTP → HTTPS la pone certbot más tarde; de entrada
+# necesitamos 80 abierto para que Let's Encrypt valide el dominio.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name coach.totalprofitjourney.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 404;
+    }
+}
+```
+
+Sustituir `coach.totalprofitjourney.com` por el dominio real del
+operador. Activar:
+
+```bash
+sudo mkdir -p /var/www/certbot
+sudo ln -s /etc/nginx/sites-available/coach-ai /etc/nginx/sites-enabled/coach-ai
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### §6.2 Vhost final tras emitir el certificado
+
+Tras completar §7 (certbot habrá editado el fichero con los
+`ssl_certificate`), revisar que el bloque HTTPS queda como sigue
+(sobrescribir lo que certbot genere si hace falta):
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name coach.totalprofitjourney.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name coach.totalprofitjourney.com;
+
+    ssl_certificate     /etc/letsencrypt/live/coach.totalprofitjourney.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/coach.totalprofitjourney.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+
+    # El webhook de Stripe manda bodies <5 KB, pero los informes
+    # generados pueden superar 1 MB; damos margen holgado.
+    client_max_body_size 5m;
+
+    # Evitar compresión sobre las respuestas del API (SSE futuro,
+    # cabeceras de Stripe). La landing sí se comprime bien.
+    gzip on;
+    gzip_types text/css application/javascript image/svg+xml text/plain;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+
+        # CRÍTICO. `maxDuration` de las rutas del Next (síntesis de
+        # Fase 1 = 300s, turnos de Fase 2 con thinking = 300s) exige
+        # timeouts holgados en el proxy. Si se bajan, la sesión se
+        # corta a medio turno y el usuario queda en estado inconsistente.
+        proxy_read_timeout  310s;
+        proxy_send_timeout  310s;
+        proxy_connect_timeout 30s;
+
+        # El webhook de Stripe es idempotente pero espera 2xx/4xx en
+        # <20 s; con el default es suficiente.
+        proxy_buffering off;
+    }
+}
+```
+
+Tras cada edición: `sudo nginx -t && sudo systemctl reload nginx`.
+
+---
+
+## §7 Certificado SSL con Let's Encrypt
+
+### §7.1 Instalar certbot
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+```
+
+### §7.2 Emitir certificado
+
+Con el vhost HTTP del §6.1 ya levantado y el DNS del dominio
+apuntando al servidor (si aún no se ha hecho el cutover final,
+servirá el propio subdominio `staging.` o el dominio temporal):
+
+```bash
+sudo certbot --nginx -d coach.totalprofitjourney.com \
+  --email info@totalprofitjourney.com \
+  --agree-tos --no-eff-email --redirect
+```
+
+Certbot configura automáticamente el bloque HTTPS y activa la
+redirección HTTP→HTTPS. Revisar que el fichero del §6.2 queda como
+allí se describe; si certbot ha generado algo diferente, ajustar los
+`proxy_*_timeout` a la mano.
+
+### §7.3 Renovación automática
+
+`certbot` instala un timer de systemd (`certbot.timer`) que renueva
+los certificados con ≥30 días de margen. Verificar:
+
+```bash
+systemctl list-timers | grep certbot
+sudo certbot renew --dry-run
+```
+
+El `--dry-run` debe terminar con `Congratulations, all simulated renewals succeeded`.
+
+### §7.4 Probar HTTPS
+
+```bash
+curl -I https://coach.totalprofitjourney.com/robots.txt
+# 200 OK
+```
+
+Si da 502: el vhost reenvía bien pero la app no está arriba (revisar
+§5). Si da 504: los timeouts del §6.2 no se aplicaron (recargar
+Nginx).
+
+---
+
+## §8 Cron del host para el borrado nocturno
+
+Reemplaza Vercel Cron. Un crontab del sistema hace `curl` a
+`/api/cron/cleanup` con el `Authorization: Bearer $CRON_SECRET`. La
+ruta ya existe desde el Paso 9 (`src/app/api/cron/cleanup/route.ts`).
+
+### §8.1 Script envoltorio
+
+Para mantener el secreto fuera del crontab (que es legible por
+cualquier usuario con `cat /etc/cron.d/...`), se guarda en un
+fichero sólo-root y el script lo carga:
+
+```bash
+sudo install -m 0600 /dev/null /etc/coach-ai-cron.env
+sudo tee /etc/coach-ai-cron.env > /dev/null <<EOF
+CRON_SECRET=<el mismo valor que en .env.production>
+EOF
+
+sudo tee /usr/local/bin/coach-ai-cleanup.sh > /dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+# shellcheck disable=SC1091
+source /etc/coach-ai-cron.env
+
+LOG_TAG="coach-ai-cleanup"
+URL="http://127.0.0.1:3000/api/cron/cleanup"
+
+response=$(curl -sS -w '\n%{http_code}' \
+  -H "Authorization: Bearer ${CRON_SECRET}" \
+  "${URL}")
+body="$(echo "${response}" | head -n -1)"
+code="$(echo "${response}" | tail -n 1)"
+
+if [ "${code}" = "200" ]; then
+  logger -t "${LOG_TAG}" "ok ${body}"
+  exit 0
+fi
+logger -t "${LOG_TAG}" "fail code=${code} body=${body}"
+exit 1
+EOF
+sudo chmod +x /usr/local/bin/coach-ai-cleanup.sh
+```
+
+Nótese que el `curl` apunta a **loopback**, no al dominio público: es
+el mismo host. Evita TLS, DNS y pasa por encima del rate limit que
+pueda tener el WAF.
+
+### §8.2 Entrada en `/etc/cron.d`
+
+`0 2 * * *` UTC = 03:00 CET invierno / 04:00 CEST verano, dentro de
+la ventana 3:00-5:00 hora local que pide §6.3 de la spec.
+
+```bash
+sudo tee /etc/cron.d/coach-ai-cleanup > /dev/null <<'EOF'
+# Borrado nocturno de sesiones cerradas y abandonadas (§6.3).
+# Logs con `journalctl -t coach-ai-cleanup`.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 2 * * * root /usr/local/bin/coach-ai-cleanup.sh
+EOF
+sudo chmod 644 /etc/cron.d/coach-ai-cleanup
+```
+
+### §8.3 Prueba manual
+
+Antes de esperar 24h, ejecutar el script a mano:
+
+```bash
+sudo /usr/local/bin/coach-ai-cleanup.sh
+journalctl -t coach-ai-cleanup --since '5 minutes ago'
+# Debe verse la línea JSON con los contadores.
+```
+
+Alternativa sin crontab, usando el fallback del Paso 9
+(`npm run cron:cleanup`): ejecutar desde el container puntualmente.
+No sustituye al crontab porque requiere que alguien lo dispare.
