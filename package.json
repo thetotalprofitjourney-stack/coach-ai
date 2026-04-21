@@ -19,7 +19,8 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "db:seed": "tsx prisma/seed.ts",
-    "fase1:compare": "tsx scripts/fase1-compare.ts"
+    "fase1:compare": "tsx scripts/fase1-compare.ts",
+    "e2e:compare": "tsx scripts/fase1-to-fase2-compare.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
