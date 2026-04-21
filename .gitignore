@@ -29,3 +29,8 @@ next-env.d.ts
 # Hand-offs generados por scripts/fase1-compare.ts. No determinísticos,
 # se regeneran en cada ejecución para inspección manual.
 src/fixtures/handoffs-generados/
+
+# Transcripciones de Fase 2 generadas por scripts/fase1-to-fase2-compare.ts.
+# No determinísticas, se regeneran en cada ejecución para la rúbrica de
+# revisión humana del Paso 12.
+src/fixtures/transcripts-generados/
