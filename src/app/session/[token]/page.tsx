@@ -5,10 +5,9 @@ import { InitialForm } from './InitialForm';
 import { Phase1Chat } from './Phase1Chat';
 import { Phase1Placeholder } from './Phase1Placeholder';
 import { Phase2Bootstrap } from './Phase2Bootstrap';
+import { Phase2Chat } from './Phase2Chat';
 import { ClosedScreen } from './ClosedScreen';
 
-// El estado de la sesión cambia por acciones del usuario (POST /form, etc.)
-// y no puede cachearse: siempre queremos leer BD en cada request.
 export const dynamic = 'force-dynamic';
 
 export default async function SessionPage({
@@ -34,7 +33,30 @@ export default async function SessionPage({
       return <Phase1Chat token={tokenParse.data} />;
     case 'phase1_completed':
       return <Phase2Bootstrap token={tokenParse.data} />;
-    case 'phase2_in_progress':
+    case 'phase2_in_progress': {
+      const [turnRows, stateRow] = await Promise.all([
+        prisma.phase2Turn.findMany({
+          where: { sessionId: tokenParse.data },
+          orderBy: [{ turnNumber: 'asc' }, { createdAt: 'asc' }],
+          select: { role: true, content: true, turnNumber: true },
+        }),
+        prisma.phase2State.findUnique({
+          where: { sessionId: tokenParse.data },
+          select: { currentLevel: true },
+        }),
+      ]);
+      const coachTurnNumber = turnRows
+        .filter((t) => t.role === 'coach')
+        .reduce((max, t) => Math.max(max, t.turnNumber), 0);
+      return (
+        <Phase2Chat
+          token={tokenParse.data}
+          initialTurns={turnRows}
+          initialCoachTurnNumber={coachTurnNumber}
+          initialLevel={stateRow?.currentLevel ?? 1}
+        />
+      );
+    }
     case 'phase2_completed':
       return <Phase1Placeholder />;
     case 'closed':
