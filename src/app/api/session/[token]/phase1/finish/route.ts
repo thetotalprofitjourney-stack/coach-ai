@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { handleAnthropicError } from '@/lib/api/anthropic-errors';
 import { jsonError, jsonOk } from '@/lib/api/response';
 import { callSintesis } from '@/lib/fase1/call-sintesis';
+import { logBusinessEvent } from '@/lib/metrics/events';
 import { prisma } from '@/lib/prisma';
 import { loadSessionOrResponse, transitionStatus } from '@/lib/session/loader';
 import { reconstructFase1RunState } from '@/lib/session/reconstruct';
@@ -80,6 +81,11 @@ export async function POST(
     console.error('phase1/finish persistencia', err);
     return jsonError('INTERNAL', 'No se pudo guardar el hand-off.', 500);
   }
+
+  logBusinessEvent('phase1_completed', {
+    durationMs: Date.now() - session.createdAt.getTime(),
+    turnsCount: 16,
+  });
 
   return jsonOk({ ok: true, status: 'phase1_completed' as const });
 }

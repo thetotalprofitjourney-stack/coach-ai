@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
 import { jsonError } from '@/lib/api/response';
+import { logBusinessEvent } from '@/lib/metrics/events';
 import {
   loadReportForDownload,
   markReportDownloadedOnce,
@@ -37,7 +38,13 @@ export async function GET(
   }
 
   try {
-    await markReportDownloadedOnce(loaded.sessionId, loaded.downloadedAt);
+    const mark = await markReportDownloadedOnce(
+      loaded.sessionId,
+      loaded.downloadedAt,
+    );
+    if (mark.firstDownload) {
+      logBusinessEvent('report_downloaded', { format: 'pdf' });
+    }
   } catch (err) {
     console.error('report/pdf: markDownloadedOnce failed', err);
   }

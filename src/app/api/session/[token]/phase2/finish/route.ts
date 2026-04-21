@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 
 import { jsonError, jsonOk } from '@/lib/api/response';
 import { parseFinalReport } from '@/lib/fase2/parse-report';
+import { logBusinessEvent } from '@/lib/metrics/events';
 import { prisma } from '@/lib/prisma';
 import { loadSessionOrResponse, transitionStatus } from '@/lib/session/loader';
 
@@ -19,10 +20,15 @@ export async function POST(
   if (loaded instanceof Response) return loaded;
   const { session } = loaded;
 
-  const lastCoachTurn = await prisma.phase2Turn.findFirst({
-    where: { sessionId: session.id, role: 'coach' },
-    orderBy: { turnNumber: 'desc' },
-  });
+  const [lastCoachTurn, coachTurnsCount] = await Promise.all([
+    prisma.phase2Turn.findFirst({
+      where: { sessionId: session.id, role: 'coach' },
+      orderBy: { turnNumber: 'desc' },
+    }),
+    prisma.phase2Turn.count({
+      where: { sessionId: session.id, role: 'coach' },
+    }),
+  ]);
   if (!lastCoachTurn) {
     return jsonError(
       'INVALID_STATE',
@@ -61,6 +67,11 @@ export async function POST(
     console.error('phase2/finish persistencia', err);
     return jsonError('INTERNAL', 'No se pudo persistir el informe.', 500);
   }
+
+  logBusinessEvent('phase2_completed', {
+    durationMs: Date.now() - session.createdAt.getTime(),
+    turnsCount: coachTurnsCount,
+  });
 
   return jsonOk({
     ok: true,

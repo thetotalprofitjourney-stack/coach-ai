@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import type { CreateSessionResponse } from '@/lib/api/schemas';
+import { logBusinessEvent } from '@/lib/metrics/events';
 
 // Creación de la fila en `sessions` — única fuente de verdad (§3.1). La
 // usan dos llamantes:
@@ -21,6 +22,7 @@ export async function createSessionRow(): Promise<CreateSessionResponse> {
   }
 
   const session = await prisma.session.create({ data: {} });
+  logBusinessEvent('session_created');
   return {
     token: session.id,
     url: `${origin}/session/${session.id}`,
