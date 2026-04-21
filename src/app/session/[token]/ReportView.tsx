@@ -6,24 +6,10 @@ import { useRouter } from 'next/navigation';
 import {
   REPORT_BLOCK_KEYS,
   type FinalReportContent,
-  type ReportBlockKey,
 } from '@/lib/fase2/parse-report';
+import { BLOCK_TITLES, reportFilename } from '@/lib/report/titles';
 
-// Títulos humanos para los 11 bloques (§5.4). El orden corresponde con
-// REPORT_BLOCK_KEYS.
-const BLOCK_TITLES: Record<ReportBlockKey, string> = {
-  objetivo_inicial: 'Objetivo inicial expresado',
-  razon_peso: 'Razón de peso identificada',
-  significado_terminos_clave: 'Significado concreto de los términos clave',
-  objetivo_reformulado: 'Objetivo reformulado',
-  capacidades_y_recursos: 'Capacidades y recursos reconocidos',
-  carencias_y_puntos_ciegos: 'Carencias y puntos ciegos admitidos',
-  riesgos_y_renuncias: 'Riesgos y renuncias identificados',
-  decision_tomada: 'Decisión tomada',
-  primer_paso: 'Primer paso comprometido',
-  senales_revision: 'Señales de revisión',
-  preguntas_abiertas: 'Preguntas abiertas',
-};
+type Format = 'pdf' | 'docx';
 
 export function ReportView({
   token,
@@ -38,15 +24,49 @@ export function ReportView({
   createdAt: string;
   initialDownloadedAt: string | null;
 }) {
-  // userName / createdAt / initialDownloadedAt se consumen en los
-  // botones de descarga y el timer de cierre (C2/C3 del Paso 8).
-  void userName;
-  void createdAt;
-  void initialDownloadedAt;
-
   const router = useRouter();
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<Format | null>(null);
+  const [hasDownloaded, setHasDownloaded] = useState<boolean>(
+    initialDownloadedAt !== null,
+  );
+
+  // initialDownloadedAt se consume también en el timer de cierre (C3).
+  void initialDownloadedAt;
+
+  const createdAtDate = new Date(createdAt);
+
+  const download = async (format: Format) => {
+    setDownloading(format);
+    setError(null);
+    try {
+      const res = await fetch(`/api/session/${token}/report/${format}`);
+      if (!res.ok) {
+        setDownloading(null);
+        setError(
+          format === 'pdf'
+            ? 'No se pudo descargar el PDF.'
+            : 'No se pudo descargar el DOCX.',
+        );
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = reportFilename(userName, createdAtDate, format);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setHasDownloaded(true);
+    } catch {
+      setError('Error de red durante la descarga.');
+    } finally {
+      setDownloading(null);
+    }
+  };
 
   const close = async () => {
     setClosing(true);
@@ -111,14 +131,42 @@ export function ReportView({
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={close}
-        disabled={closing}
-        className="mt-8 w-full rounded bg-neutral-900 px-4 py-3 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {closing ? 'Cerrando…' : 'Cerrar sesión'}
-      </button>
+      <section className="mt-10 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => download('pdf')}
+            disabled={downloading !== null}
+            className="w-full rounded bg-neutral-900 px-4 py-3 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {downloading === 'pdf' ? 'Preparando PDF…' : 'Descargar PDF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => download('docx')}
+            disabled={downloading !== null}
+            className="w-full rounded bg-neutral-900 px-4 py-3 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {downloading === 'docx' ? 'Preparando DOCX…' : 'Descargar Word'}
+          </button>
+        </div>
+
+        {hasDownloaded && (
+          <p className="text-sm text-neutral-600">
+            Ya has descargado tu informe. Puedes volver a descargarlo dentro de
+            los próximos 10 minutos.
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={close}
+          disabled={closing}
+          className="mt-2 w-full rounded border border-neutral-300 bg-white px-4 py-3 text-neutral-800 transition hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {closing ? 'Cerrando…' : 'Cerrar sesión'}
+        </button>
+      </section>
     </main>
   );
 }
