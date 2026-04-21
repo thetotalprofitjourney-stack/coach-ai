@@ -29,7 +29,9 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@hookform/resolvers": "^5.2.2",
     "@prisma/client": "^6.2.1",
+    "docx": "^9.6.1",
     "next": "^15.1.4",
+    "pdfkit": "^0.18.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.72.1",
@@ -37,6 +39,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "autoprefixer": "^10.4.20",
