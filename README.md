@@ -6,6 +6,19 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
+Paso 11 — Landing pública (§2.1 y §6.4). La home `/` deja de ser
+placeholder: hero + "Qué es" / "Cómo funciona" / "Qué obtienes" /
+vídeo / precio con dos CTA "Empezar mi sesión" que invocan el endpoint
+público `POST /api/checkout/create` del Paso 10 y redirigen a la URL
+hosted de Stripe. Nueva `/privacidad` con la política del §6.4. Copy
+y política redactados en español con placeholders del operador
+(contacto, razón social, URL del vídeo, importe mostrado). Dos env
+vars nuevas: `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` (precio visible al
+usuario, que el operador mantiene coherente con `STRIPE_PRICE_ID`) y
+`NEXT_PUBLIC_PROMO_VIDEO_URL` (embed YouTube/Vimeo opcional, fallback
+a placeholder sobrio "Vídeo próximamente"). Ver la sección "Paso 11 —
+Landing pública" al final de este README.
+
 Paso 10 — Stripe e integración de pago (§2.2 y §3.1). Puente único
 entre el sistema de facturación y el sistema de sesión: al
 completarse la Checkout Session, el webhook crea la fila en
@@ -96,6 +109,15 @@ Endpoints activos:
 
 Rutas activas:
 
+- `GET /` — landing pública (§2.1). Server Component estático con las
+  secciones del doc (hero, "qué es", "cómo funciona", "qué obtienes",
+  vídeo, precio) y dos instancias del BuyButton. El precio y la URL
+  del vídeo se leen desde env públicas; cada CTA dispara
+  `POST /api/checkout/create` y redirige a la URL hosted de Stripe.
+- `GET /privacidad` — política de privacidad pública (§6.4). Server
+  Component estático. Contiene placeholders `[nombre del operador]`
+  y `[contacto@operador.es]` que el operador sustituye antes de
+  producción.
 - `GET /pay/success?cs={id}` — aterrizaje post-pago. Client Component
   que hace polling contra `/api/checkout/resolve` hasta obtener el
   token y redirigir a `/session/{token}`.
@@ -647,6 +669,81 @@ CVC cualquiera, fecha futura, código postal cualquiera.
 - Errores de firma (400) en los logs indican desalineamiento entre el
   `whsec_` del listener / dashboard y `STRIPE_WEBHOOK_SECRET` del
   servidor.
+
+## Paso 11 — Landing pública
+
+Implementa §2.1 (landing) y §6.4 (política de privacidad). La home
+pública `/` abre el circuito comercial: el usuario aterriza, entiende
+qué hace el producto, pulsa "Empezar mi sesión" y el componente
+cliente `BuyButton` invoca `POST /api/checkout/create` (Paso 10) para
+redirigir a la URL hosted de Stripe. Tras el pago, el usuario termina
+en `/pay/success` y el polling resuelve el token para redirigir a
+`/session/{token}`. La política de privacidad en `/privacidad` queda
+enlazada desde el footer de la landing.
+
+**Variables de entorno nuevas.** Ambas son `NEXT_PUBLIC_*`, lo que
+significa que Next.js las inlina en el bundle del cliente. Basta con
+declararlas en el entorno del build.
+
+- `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` — string libre con el precio que
+  se renderiza en la sección "Precio" de la landing (ej. `"149 €"`,
+  `"120 EUR"`). Debe mantenerse coherente con el importe del Price
+  apuntado por `STRIPE_PRICE_ID`: Stripe es la fuente de verdad del
+  cobro; esta variable sólo pinta el número. Si queda vacía, la
+  landing muestra `—` como marcador visible de falta de configuración.
+- `NEXT_PUBLIC_PROMO_VIDEO_URL` — URL embed del vídeo promocional,
+  típicamente YouTube o Vimeo (ej. `https://www.youtube.com/embed/XXXX`).
+  Si queda vacía, la sección "Vídeo" se renderiza como un cuadro gris
+  con el texto "Vídeo próximamente".
+
+**TODO del operador antes de producción.**
+
+- [ ] En `src/app/privacidad/page.tsx`, sustituir `[nombre del
+      operador]` por la razón social (o nombre comercial) del
+      responsable del tratamiento.
+- [ ] En `src/app/privacidad/page.tsx`, sustituir
+      `[contacto@operador.es]` por la dirección de correo electrónico
+      real de soporte y privacidad.
+- [ ] Decidir si el subencargado externo de modelos de lenguaje debe
+      citarse por nombre (Anthropic) y añadir el enlace al contrato
+      DPA correspondiente; la redacción actual utiliza la fórmula
+      genérica "proveedor externo de modelos de lenguaje".
+- [ ] Configurar `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` con el mismo
+      importe que el Price activo en Stripe.
+- [ ] Configurar `NEXT_PUBLIC_PROMO_VIDEO_URL` con el embed del vídeo
+      promocional cuando esté producido.
+- [ ] Revisar a ojo el copy de la landing (hero, "qué es", "cómo
+      funciona", "qué obtienes", precio) — deriva de §1 y §2.1 y
+      puede ajustarse en tono.
+
+**Flujo de validación en producción.** Con las env vars configuradas
+y un deploy activo:
+
+1. Abrir la URL pública de la app. La home debe renderizar el hero
+   con el CTA "Empezar mi sesión".
+2. Pulsar el CTA. El botón muestra "Redirigiendo…" y redirige al
+   Checkout hosted de Stripe.
+3. Introducir una tarjeta test (`4242 4242 4242 4242`, CVC cualquiera,
+   fecha futura, código postal cualquiera).
+4. Al completar el pago, aterrizar en `/pay/success?cs={id}` y
+   comprobar que redirige a `/session/{token}` tras el polling.
+5. Volver a la home, pulsar el CTA y cancelar el Checkout. Aterrizar
+   en `/pay/cancelled`; el botón "Volver al inicio" debe llevar a la
+   landing real.
+6. Desde la home, pulsar el enlace del footer "Política de privacidad"
+   y comprobar que `/privacidad` renderiza los ocho bloques.
+
+**Diseño (§6.1).** Mobile-first, legible en 375 px. Tipografía base
+16 px en móvil / `text-lg` (18 px) en escritorio para los párrafos
+principales. Paleta `neutral-*` (fondos blancos, texto
+`neutral-700`/`neutral-900`, acento `neutral-900` en los CTA, bordes
+`neutral-200`). Sin emojis ni iconos decorativos.
+
+**Fuera de alcance.** Analytics, banner de cookies (no hay cookies no
+funcionales), multi-idioma (§7.4: solo español en MVP), Open Graph
+avanzado, sitemap, A/B testing de copy, landings alternativas, CMS.
+Se retoma en el Paso 12 (testing end-to-end con los seis perfiles) y
+Paso 13 (producción).
 
 ## Documentación del producto
 
