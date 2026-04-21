@@ -1,42 +1,83 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
   REPORT_BLOCK_KEYS,
   type FinalReportContent,
-  type ReportBlockKey,
 } from '@/lib/fase2/parse-report';
+import { BLOCK_TITLES, reportFilename } from '@/lib/report/titles';
 
-// Títulos humanos para los 11 bloques (§5.4). El orden corresponde con
-// REPORT_BLOCK_KEYS.
-const BLOCK_TITLES: Record<ReportBlockKey, string> = {
-  objetivo_inicial: 'Objetivo inicial expresado',
-  razon_peso: 'Razón de peso identificada',
-  significado_terminos_clave: 'Significado concreto de los términos clave',
-  objetivo_reformulado: 'Objetivo reformulado',
-  capacidades_y_recursos: 'Capacidades y recursos reconocidos',
-  carencias_y_puntos_ciegos: 'Carencias y puntos ciegos admitidos',
-  riesgos_y_renuncias: 'Riesgos y renuncias identificados',
-  decision_tomada: 'Decisión tomada',
-  primer_paso: 'Primer paso comprometido',
-  senales_revision: 'Señales de revisión',
-  preguntas_abiertas: 'Preguntas abiertas',
-};
+type Format = 'pdf' | 'docx';
+
+const CLOSE_WINDOW_MS = 10 * 60 * 1000;
+
+function formatRemaining(ms: number): string {
+  const secs = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 export function ReportView({
   token,
   report,
+  userName,
+  createdAt,
+  initialDownloadedAt,
 }: {
   token: string;
   report: FinalReportContent;
+  userName: string | null;
+  createdAt: string;
+  initialDownloadedAt: string | null;
 }) {
   const router = useRouter();
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<Format | null>(null);
+  const [expiresAt, setExpiresAt] = useState<number | null>(() => {
+    if (!initialDownloadedAt) return null;
+    return new Date(initialDownloadedAt).getTime() + CLOSE_WINDOW_MS;
+  });
+  const [now, setNow] = useState<number>(() => Date.now());
 
-  const close = async () => {
+  const hasDownloaded = expiresAt !== null;
+  const createdAtDate = new Date(createdAt);
+
+  const download = async (format: Format) => {
+    setDownloading(format);
+    setError(null);
+    try {
+      const res = await fetch(`/api/session/${token}/report/${format}`);
+      if (!res.ok) {
+        setDownloading(null);
+        setError(
+          format === 'pdf'
+            ? 'No se pudo descargar el PDF.'
+            : 'No se pudo descargar el DOCX.',
+        );
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = reportFilename(userName, createdAtDate, format);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setExpiresAt((prev) => prev ?? Date.now() + CLOSE_WINDOW_MS);
+    } catch {
+      setError('Error de red durante la descarga.');
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const close = useCallback(async () => {
     setClosing(true);
     setError(null);
     try {
@@ -53,7 +94,36 @@ export function ReportView({
       setClosing(false);
       setError('Error de red.');
     }
-  };
+  }, [token, router]);
+
+  // El timer se mantiene en un ref para que los efectos sólo dependan de
+  // `expiresAt` y la referencia estable de `close` (useCallback).
+  const autoClosedRef = useRef(false);
+
+  useEffect(() => {
+    if (expiresAt === null) return;
+    const tick = () => setNow(Date.now());
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  useEffect(() => {
+    if (expiresAt === null) return;
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      if (!autoClosedRef.current) {
+        autoClosedRef.current = true;
+        void close();
+      }
+      return;
+    }
+    const id = setTimeout(() => {
+      if (autoClosedRef.current) return;
+      autoClosedRef.current = true;
+      void close();
+    }, remaining);
+    return () => clearTimeout(id);
+  }, [expiresAt, close]);
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10 text-base md:text-[17px]">
@@ -99,14 +169,46 @@ export function ReportView({
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={close}
-        disabled={closing}
-        className="mt-8 w-full rounded bg-neutral-900 px-4 py-3 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {closing ? 'Cerrando…' : 'Cerrar sesión'}
-      </button>
+      <section className="mt-10 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => download('pdf')}
+            disabled={downloading !== null}
+            className="w-full rounded bg-neutral-900 px-4 py-3 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {downloading === 'pdf' ? 'Preparando PDF…' : 'Descargar PDF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => download('docx')}
+            disabled={downloading !== null}
+            className="w-full rounded bg-neutral-900 px-4 py-3 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {downloading === 'docx' ? 'Preparando DOCX…' : 'Descargar Word'}
+          </button>
+        </div>
+
+        {hasDownloaded && expiresAt !== null && (
+          <p className="text-sm text-neutral-600">
+            Ya has descargado tu informe. Puedes volver a descargarlo dentro de
+            los próximos 10 minutos. La sesión se cerrará automáticamente en{' '}
+            <span className="font-medium text-neutral-800" aria-live="polite">
+              {formatRemaining(expiresAt - now)}
+            </span>
+            .
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={close}
+          disabled={closing}
+          className="mt-2 w-full rounded border border-neutral-300 bg-white px-4 py-3 text-neutral-800 transition hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {closing ? 'Cerrando…' : 'Cerrar sesión'}
+        </button>
+      </section>
     </main>
   );
 }

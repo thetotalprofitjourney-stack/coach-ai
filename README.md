@@ -6,20 +6,22 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
-Paso 7 — integración end-to-end Fase 1 → hand-off → Fase 2 → informe con
-persistencia Prisma y UI de chat. Desde la pantalla pública
-`/session/{token}` un usuario atraviesa el flujo completo: formulario →
-16 ítems DISC → hand-off persistido en `phase1_handoff` → ~50 turnos con
-el coach (Opus 4.7 + extended thinking) → informe de 11 bloques (§5.4)
-parseado a `final_reports.report_content` → cierre. Las transiciones de
-`Session.status` son monotónicas (`created` → `phase1_in_progress` →
-`phase1_completed` → `phase2_in_progress` → `phase2_completed` →
-`closed`) y cada endpoint valida el estado esperado; los intentos de
-salto devuelven 409. Los endpoints dev (`/api/dev/fase1/*`,
-`/api/dev/coach/*`) siguen activos para validación aislada y no
-comparten camino con el flujo real. Orden de construcción en
-`docs/proyecto-completo.md` §7.1. Paso 8 (materialización PDF/DOCX del
-informe) y Paso 9 (cron nocturno de borrado) quedan fuera.
+Paso 8 — materialización del informe final como PDF y DOCX descargables
+y ciclo de vida de la sesión tras la descarga. En el estado
+`phase2_completed` la pantalla `/session/{token}` muestra el informe
+con dos botones primarios ("Descargar PDF" / "Descargar Word") además
+del "Cerrar sesión" explícito (ahora secundario). Los dos entregables
+se renderizan bajo demanda (pdfkit para PDF, docx para DOCX) con
+portada (nombre + fecha), 11 bloques con los títulos de §5.4 y pie
+sobrio "Informe generado por Coach AI — DD/MM/YYYY". La primera
+descarga marca `FinalReport.downloadedAt` de forma idempotente y
+arranca un temporizador client-side de 10 min (§2.6): transcurrido el
+plazo o al pulsar el botón, la sesión transita a `closed`. Si el
+usuario recarga la página dentro de esa ventana, el timer se reanuda
+con el remanente calculado desde `downloadedAt`. Intento de descarga
+con `status='closed'` → 410 `SESSION_CLOSED`. Paso 9 (cron nocturno)
+queda fuera; los ficheros no se persisten, sólo se regeneran al vuelo
+desde `FinalReport.reportContent`.
 
 Endpoints activos:
 
@@ -44,6 +46,13 @@ Endpoints activos:
 - `POST /api/session/{token}/phase2/finish` — parsea los 11 bloques del
   último turno del coach, persiste `final_reports` y transiciona a
   `phase2_completed`.
+- `GET /api/session/{token}/report/pdf` — renderiza y sirve el informe
+  final como PDF (`application/pdf`, attachment). Sólo desde
+  `phase2_completed`; 410 `SESSION_CLOSED` si la sesión ya se cerró.
+  La primera descarga marca `FinalReport.downloadedAt`.
+- `GET /api/session/{token}/report/docx` — gemelo del anterior para
+  formato Word (`vnd.openxmlformats-officedocument.wordprocessingml.document`).
+  Comparte loader y marcado idempotente de `downloadedAt`.
 - `POST /api/session/{token}/close` — transición terminal a `closed`
   desde cualquier estado activo.
 - `POST /api/dev/anthropic-ping` — endpoint interno del operador.
@@ -390,6 +399,54 @@ Errores esperados:
 
 Los outputs (`src/fixtures/handoffs-generados/`) están en `.gitignore` —
 no se versionan, se regeneran en cada ejecución.
+
+## Paso 8 — smoke test de descargas
+
+Pensado para ejecutarse en producción contra una sesión real en estado
+`phase2_completed`. Verifica que los dos entregables bajan, abren
+correctamente y que la primera descarga arranca el timer de 10 min.
+
+Requisitos:
+
+- Una sesión real con `status='phase2_completed'` y `final_reports`
+  relleno. Una forma rápida de obtener una es ejecutar
+  `npm run e2e:compare` con el fixture `daniel` y abortar antes de
+  cerrar, o inspeccionar `db:studio` tras cualquier corrida terminada.
+- Token válido en la URL.
+
+```bash
+HOST="https://tu-despliegue.app"
+TOKEN="<uuid-de-sesion-en-phase2_completed>"
+
+# 1. Descargar PDF. Debe crear informe-<slug>-<YYYY-MM-DD>.pdf.
+curl -OJ "$HOST/api/session/$TOKEN/report/pdf"
+
+# 2. Descargar DOCX. Debe crear informe-<slug>-<YYYY-MM-DD>.docx.
+curl -OJ "$HOST/api/session/$TOKEN/report/docx"
+
+# 3. Abrir ambos a ojo: portada con nombre y fecha, 11 bloques
+#    titulados (§5.4), pie "Informe generado por Coach AI — DD/MM/YYYY".
+
+# 4. Inspeccionar la BD: FinalReport.downloadedAt debe tener el
+#    timestamp de la primera descarga; las posteriores no lo mueven.
+```
+
+En la UI, abrir `/session/{TOKEN}`: los dos botones de descarga aparecen
+encima del "Cerrar sesión" (ahora secundario). Tras la primera descarga,
+un contador "La sesión se cerrará automáticamente en M:SS" empieza a
+correr; al llegar a 0:00 el cliente llama a `/close` y la pantalla pasa
+a `ClosedScreen`.
+
+Errores esperados:
+
+| Caso | Respuesta |
+| --- | --- |
+| Token inválido | 400 `INVALID_INPUT` |
+| Token inexistente | 404 `SESSION_NOT_FOUND` |
+| `status='closed'` | 410 `SESSION_CLOSED` |
+| Estado distinto de `phase2_completed` | 409 `INVALID_STATE` |
+| `FinalReport` ausente en `phase2_completed` | 404 `REPORT_NOT_FOUND` |
+| Error de render interno | 500 `INTERNAL` |
 
 ## Documentación del producto
 

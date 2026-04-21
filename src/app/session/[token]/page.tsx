@@ -60,13 +60,27 @@ export default async function SessionPage({
       );
     }
     case 'phase2_completed': {
-      const reportRow = await prisma.finalReport.findUnique({
-        where: { sessionId: tokenParse.data },
-        select: { reportContent: true },
+      const row = await prisma.session.findUnique({
+        where: { id: tokenParse.data },
+        select: {
+          userName: true,
+          createdAt: true,
+          finalReport: {
+            select: { reportContent: true, downloadedAt: true },
+          },
+        },
       });
-      if (!reportRow) return <Phase1Placeholder />;
-      const report = reportRow.reportContent as unknown as FinalReportContent;
-      return <ReportView token={tokenParse.data} report={report} />;
+      if (!row?.finalReport) return <Phase1Placeholder />;
+      const report = row.finalReport.reportContent as unknown as FinalReportContent;
+      return (
+        <ReportView
+          token={tokenParse.data}
+          report={report}
+          userName={row.userName}
+          createdAt={row.createdAt.toISOString()}
+          initialDownloadedAt={row.finalReport.downloadedAt?.toISOString() ?? null}
+        />
+      );
     }
     case 'closed':
       return <ClosedScreen />;
