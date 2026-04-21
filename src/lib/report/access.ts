@@ -80,21 +80,30 @@ export async function loadReportForDownload(
 // Marca la primera descarga (timestamp arranca el timer de 10 min del
 // usuario, §2.6). Idempotente vía updateMany con guardia `downloadedAt IS
 // NULL`: dos descargas concurrentes no pisan el valor. Devuelve el
-// timestamp efectivo (nuevo o el ya existente).
+// timestamp efectivo y un flag `firstDownload` para que el caller emita
+// `event=report_downloaded` solo en la primera descarga (§7.3, Paso 14).
+export interface MarkDownloadedResult {
+  downloadedAt: Date;
+  firstDownload: boolean;
+}
+
 export async function markReportDownloadedOnce(
   sessionId: string,
   previous: Date | null,
-): Promise<Date> {
-  if (previous) return previous;
+): Promise<MarkDownloadedResult> {
+  if (previous) return { downloadedAt: previous, firstDownload: false };
   const now = new Date();
   const res = await prisma.finalReport.updateMany({
     where: { sessionId, downloadedAt: null },
     data: { downloadedAt: now },
   });
-  if (res.count === 1) return now;
+  if (res.count === 1) return { downloadedAt: now, firstDownload: true };
   const row = await prisma.finalReport.findUnique({
     where: { sessionId },
     select: { downloadedAt: true },
   });
-  return row?.downloadedAt ?? now;
+  return {
+    downloadedAt: row?.downloadedAt ?? now,
+    firstDownload: false,
+  };
 }

@@ -6,6 +6,7 @@ import {
   sessionTokenSchema,
   type FormResponse,
 } from '@/lib/api/schemas';
+import { logBusinessEvent } from '@/lib/metrics/events';
 
 // POST /api/session/{token}/form
 // Recibe los datos del formulario inicial (§2.3), los guarda en `sessions` y
@@ -40,7 +41,7 @@ export async function POST(
 
   const session = await prisma.session.findUnique({
     where: { id: tokenParse.data },
-    select: { status: true },
+    select: { status: true, createdAt: true },
   });
   if (!session) {
     return jsonError('SESSION_NOT_FOUND', 'La sesión no existe.', 404);
@@ -71,6 +72,10 @@ export async function POST(
     console.error('POST /api/session/{token}/form failed', err);
     return jsonError('INTERNAL', 'No se pudo guardar el formulario.', 500);
   }
+
+  logBusinessEvent('form_submitted', {
+    durationMs: Date.now() - session.createdAt.getTime(),
+  });
 
   const response: FormResponse = { ok: true, status: 'phase1_in_progress' };
   return jsonOk(response);

@@ -1,22 +1,28 @@
-// Cron nocturno de borrado (§6.3). Hard delete. Se invoca desde:
-//   - GET /api/cron/cleanup (Vercel Cron, ventana 3:00-5:00 local).
+// Cron nocturno (§6.3 + §7.3). Se invoca desde:
+//   - GET /api/cron/cleanup (entry HTTP, invocado por cron del host).
 //   - `npm run cron:cleanup` (script manual del operador).
 //
-// Reglas aplicadas:
-//   1. Borrar sesiones con status = 'closed'.
-//   2. Borrar sesiones con created_at < now - 24h y status != 'closed'
-//      (abandonadas, §6.3).
-//   3. Borrar ficheros PDF/DOCX asociados en almacenamiento (hoy no-op:
-//      Paso 8 renderiza on-demand, final_reports.pdf_path/docx_path están
-//      siempre a NULL). Hook `deleteReportBlobs` listo para cuando se
-//      persistan blobs reales.
-//   4. Emitir un log estructurado con los contadores (§7.3, sólo
-//      agregados, sin PII).
+// Dos stages, en este orden:
+//   1. collect — `collectDailyStats` agrega las filas aún presentes a
+//      `daily_stats` (§7.3, Paso 14). Corre ANTES del borrado porque
+//      después los datos ya no existen.
+//   2. cleanup — hard delete de:
+//        a. Sesiones con status = 'closed'.
+//        b. Sesiones con created_at < now - 24h y status != 'closed'
+//           (abandonadas, §6.3).
+//      El borrado de la fila en `sessions` arrastra en cascada el
+//      resto (phase1_responses, phase1_handoff, phase2_turns,
+//      phase2_state, final_reports) vía onDelete: Cascade.
 //
-// El borrado de la fila en `sessions` arrastra en cascada el resto
-// (phase1_responses, phase1_handoff, phase2_turns, phase2_state,
-// final_reports) vía onDelete: Cascade declarado en el schema.
+// Si `collect` falla, el cron aborta antes del borrado: los datos de
+// la DB quedan intactos para una re-ejecución. `event=nightly_failed`
+// en stdout con el stage para diagnóstico.
+//
+// `deleteReportBlobs` sigue siendo un hook no-op: el Paso 8 renderiza
+// PDF/DOCX on-demand, así que `final_reports.pdf_path` y `docx_path`
+// siguen a NULL. Listo para cuando se persistan blobs reales.
 
+import { collectDailyStats, type DailyStatsReport } from '@/lib/metrics/daily';
 import { prisma } from '@/lib/prisma';
 
 const ABANDONED_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -31,9 +37,21 @@ export interface CleanupReport {
   blobsDeletedCount: number;
 }
 
-export interface RunCleanupOptions {
+export interface NightlyReport {
+  stats: DailyStatsReport | null;
+  cleanup: CleanupReport;
+}
+
+export interface RunNightlyOptions {
   now?: Date;
   dryRun?: boolean;
+  // Fecha objetivo del recolector (cualquier Date dentro del día
+  // deseado, UTC). Default: ayer-UTC respecto a `now`.
+  collectDate?: Date;
+  // Si `true`, salta el stage de collect. Útil para dry-runs de
+  // desarrollo que sólo quieren validar el contador de cleanup sin
+  // pisar `daily_stats`. El cron productivo nunca lo usa.
+  skipCollect?: boolean;
 }
 
 interface ReportBlobRow {
@@ -42,20 +60,61 @@ interface ReportBlobRow {
   docxPath: string | null;
 }
 
-// Hook reservado para cuando se persistan ficheros en un backend real
-// (Vercel Blob, S3…). Hoy todas las filas tienen pdf_path y docx_path a
-// NULL, así que el bucle no entra nunca y el contador es 0. Debe
-// ejecutarse ANTES de los deleteMany de sesiones: el cascade borra
-// final_reports junto con sessions y después ya no tendríamos los paths.
 async function deleteReportBlobs(_rows: ReportBlobRow[]): Promise<number> {
   return 0;
 }
 
-export async function runCleanup(
-  options: RunCleanupOptions = {},
-): Promise<CleanupReport> {
+export async function runNightly(
+  options: RunNightlyOptions = {},
+): Promise<NightlyReport> {
   const now = options.now ?? new Date();
   const dryRun = options.dryRun ?? false;
+  const skipCollect = options.skipCollect ?? false;
+  const collectDate =
+    options.collectDate ?? new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+  let stats: DailyStatsReport | null = null;
+  if (!skipCollect && !dryRun) {
+    try {
+      stats = await collectDailyStats({ date: collectDate, now });
+    } catch (err) {
+      console.log(
+        JSON.stringify({
+          event: 'nightly_failed',
+          stage: 'collect',
+          timestamp: new Date().toISOString(),
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      throw err;
+    }
+  }
+
+  let cleanup: CleanupReport;
+  try {
+    cleanup = await runCleanupStage({ now, dryRun });
+  } catch (err) {
+    console.log(
+      JSON.stringify({
+        event: 'nightly_failed',
+        stage: 'cleanup',
+        timestamp: new Date().toISOString(),
+        message: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    throw err;
+  }
+
+  return { stats, cleanup };
+}
+
+async function runCleanupStage({
+  now,
+  dryRun,
+}: {
+  now: Date;
+  dryRun: boolean;
+}): Promise<CleanupReport> {
   const startedAt = Date.now();
   const abandonedThreshold = new Date(now.getTime() - ABANDONED_WINDOW_MS);
 

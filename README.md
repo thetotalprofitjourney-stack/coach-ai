@@ -6,6 +6,21 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
+Paso 14 — Métricas agregadas sin PII (§7.3). Primer paso post-MVP.
+Añade observabilidad operativa sobre lo que el MVP dejó cubierto con
+dos líneas de log (cron + Stripe webhook): (a) tabla `daily_stats`
+poblada por el cron nocturno antes del borrado, persiste contadores
+por día UTC más allá del TTL de 24-48h de las sesiones; (b) cinco
+eventos de log de negocio (`session_created`, `form_submitted`,
+`phase1_completed`, `phase2_completed`, `report_downloaded`) con
+metadatos agregados y sin PII; (c) endpoint interno `GET
+/api/dev/stats` con el header `X-Session-Create-Secret` habitual; (d)
+script `npm run metrics:show` que habla directo con la BD. Sin
+Plausible, PostHog, GA, Sentry ni cookies de analítica — §8 los
+mantiene fuera. Ver la sección "Paso 14 — Métricas agregadas" al
+final de este README y el detalle técnico en
+[`docs/paso-14-metrics.md`](./docs/paso-14-metrics.md).
+
 Paso 13 — Producción (§7.1 paso 13). Cierre del MVP: el repo queda
 listo para desplegar sobre el stack estándar del operador (Ubuntu
 24.04 + Docker + PostgreSQL en host + Nginx con SSL). El deploy en sí,
@@ -130,6 +145,10 @@ Endpoints activos:
   Hace una llamada real al SDK de Anthropic con prompt caching y devuelve
   la respuesta, las métricas de `usage` y la latencia. Reutiliza el mismo
   header `X-Session-Create-Secret`. No se invoca desde el frontend.
+- `GET /api/dev/stats` — Paso 14. Devuelve el JSON con filas de
+  `daily_stats` en el rango `?from=YYYY-MM-DD&to=YYYY-MM-DD` (ambos
+  opcionales, default últimos 30 días UTC) y totales. Mismo header
+  `X-Session-Create-Secret`. Sin PII por construcción.
 - `POST /api/dev/coach/run` — arranca una run de validación aislada del
   coach con un hand-off fixture. Devuelve `runId` y el primer turno del
   coach. Mismo header de operador.
@@ -244,8 +263,9 @@ La app estará disponible en `http://localhost:3000`.
 | `npm run db:seed` | Ejecuta `prisma/seed.ts` (no-op en el Paso 1) |
 | `npm run fase1:compare` | Corre los 6 fixtures piloto de Fase 1 contra los endpoints dev y escribe los hand-offs generados en `src/fixtures/handoffs-generados/`. Admite `--slug` |
 | `npm run e2e:compare` | Flujo completo `create → form → phase1 → phase2 → close` con los 6 slugs contra los endpoints productivos, persiste transcripciones en `src/fixtures/transcripts-generados/`. Admite `--slug` |
-| `npm run cron:cleanup` / `cron:cleanup:dry` | Fallback del operador al cron nocturno: ejecuta el borrado directamente contra `DATABASE_URL`, con `--dry-run` sólo cuenta |
+| `npm run cron:cleanup` / `cron:cleanup:dry` | Fallback del operador al cron nocturno: ejecuta `runNightly` (collect de `daily_stats` + borrado) directamente contra `DATABASE_URL`; `--dry-run` salta collect y sólo cuenta |
 | `npm run healthcheck` | Canary post-deploy (Paso 13): GET a las rutas públicas contra `$COACH_BASE_URL` y `exit 1` ante la primera que no devuelva 200 |
+| `npm run metrics:show` | Paso 14: tabla ASCII con las filas de `daily_stats`. `-- --days N` ajusta el rango (default 30) |
 
 ## Estructura
 
@@ -936,6 +956,65 @@ suficiente; acceso root/sudo. Lista completa en
 incluye la checklist con la tabla "nombre · obligatoria · secreto · de
 dónde sale" y separa `NEXT_PUBLIC_*` (inline en el bundle, cualquier
 cambio requiere rebuild).
+
+## Paso 14 — Métricas agregadas sin PII
+
+Primer paso post-MVP. Implementa §7.3: observabilidad operativa
+sobre sesiones creadas/completadas/abandonadas, duraciones, turnos
+del coach y descargas, todo agregado por día UTC y sin datos
+personales. No introduce Plausible, PostHog, GA, Sentry ni cookies
+de analítica (§8).
+
+**Qué añade al código.**
+
+- Nuevo modelo `DailyStats` (`prisma/schema.prisma`) + migración
+  `20260421020000_paso_14_daily_stats`. Índice adicional
+  `idx_sessions_created_status` para las queries del recolector.
+- `src/lib/metrics/daily.ts` con `collectDailyStats({ date })`.
+  Contadores con `groupBy`/`count` de Prisma y `percentile_cont`
+  vía `$queryRaw` tipado para p50/p95.
+- `src/lib/metrics/events.ts` con `logBusinessEvent(name, payload)`.
+  Mismo formato JSON que los logs existentes del Paso 9 y 10.
+- Refactor `src/lib/cron/cleanup.ts`: `runCleanup` → `runNightly`,
+  que encadena `collect + cleanup`. Si collect falla, el cleanup no
+  corre (no hay pérdida de datos). Callers actualizados:
+  `GET /api/cron/cleanup` y `scripts/cron-cleanup.ts`.
+- Instrumentación de 5 eventos en los endpoints correspondientes
+  (`session_created`, `form_submitted`, `phase1_completed`,
+  `phase2_completed`, `report_downloaded`). Sin PII: metadatos
+  de proceso (durationMs, turnsCount, format) y nada más.
+- `GET /api/dev/stats` y `scripts/metrics-show.ts` + entrada en
+  `package.json` (`npm run metrics:show`).
+
+**Qué NO añade.** Analytics de terceros, tracking del visitante,
+dashboards web, cohortes, A/B testing, alertas, medición de coste
+por llamada de Anthropic (requiere persistir `usage` — fuera del
+alcance aquí). §8 mantiene todo esto fuera del MVP.
+
+**Tres vías de consulta.**
+
+```bash
+# 1. CLI contra la BD local (o con DATABASE_URL apuntando a prod):
+npm run metrics:show                # últimos 30 días
+npm run metrics:show -- --days 7    # última semana
+
+# 2. Endpoint HTTP con el mismo header que el resto de /api/dev/*:
+curl -sS -H "X-Session-Create-Secret: $SECRET" \
+  "$HOST/api/dev/stats?from=2026-04-01&to=2026-04-30" | jq
+
+# 3. SQL directo — la tabla es pública para el operador, sin PII:
+sudo -iu postgres psql coach_ai_prod -c 'SELECT * FROM daily_stats ORDER BY date DESC LIMIT 30;'
+```
+
+**Deploy.** El Paso 14 **no** despliega nada en prod — eso es un
+`git pull && docker compose build && up -d` + `prisma migrate deploy`
+que ejecuta el operador siguiendo el runbook del Paso 13. El cron
+del host no cambia: el mismo endpoint `GET /api/cron/cleanup` ahora
+dispara `runNightly` internamente.
+
+Detalle técnico y caveats (frontera de días, idempotencia, coste
+Anthropic fuera de alcance, queries SQL de ejemplo) en
+[`docs/paso-14-metrics.md`](./docs/paso-14-metrics.md).
 
 ## Documentación del producto
 

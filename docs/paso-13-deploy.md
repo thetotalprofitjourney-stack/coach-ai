@@ -881,9 +881,12 @@ paso lógico.
 
 ## §14 Observabilidad operativa
 
-La spec §7.3 pide métricas agregadas sin PII. No se añade nada nuevo
-en el Paso 13: los logs estructurados que ya emiten el cron y el
-webhook (desde los Pasos 9 y 10) cubren el MVP.
+La spec §7.3 pide métricas agregadas sin PII. En el Paso 13 se
+cubre con los logs estructurados del cron y el webhook (Pasos 9 y
+10). El Paso 14 amplía con `daily_stats`, 5 eventos de log de
+negocio, el endpoint interno `GET /api/dev/stats` y el comando
+`npm run metrics:show` — ver [`paso-14-metrics.md`](./paso-14-metrics.md)
+para detalles.
 
 ### §14.1 Dónde están los logs
 
@@ -892,9 +895,18 @@ webhook (desde los Pasos 9 y 10) cubren el MVP.
   - `event=cron_cleanup` — ejecución del borrado nocturno (cuando
     se dispara vía HTTP; el script del §8 lo captura también con
     `logger -t coach-ai-cleanup`).
+  - `event=daily_stats_collected` — stage previo al borrado desde
+    el Paso 14. Contadores completos del día agregados en
+    `daily_stats`. **Sin PII**.
   - `event=stripe_webhook` — recepción del webhook de Stripe con
     `outcome` (`ignored` / `idempotent` / `created`), `eventId` y
     `durationMs`. **Sin PII**: ni email ni nombre fiscal.
+  - `event=session_created` / `form_submitted` / `phase1_completed`
+    / `phase2_completed` / `report_downloaded` — eventos de
+    negocio del Paso 14. Metadatos (durationMs, turnsCount,
+    format) sin identificadores ni contenido.
+  - `event=nightly_failed` — el cron del Paso 14 abortó en el
+    stage `collect` o `cleanup`. Si aparece, mirar el `message`.
 - **Crontab del host**: `journalctl -t coach-ai-cleanup` y
   `journalctl -t coach-ai-backup`. Mostrar la última semana con
   `journalctl -t coach-ai-cleanup --since '7 days ago'`.
@@ -927,6 +939,9 @@ Sin herramienta dedicada de APM, el operador puede revisar a mano:
 
 - `journalctl -t coach-ai-cleanup` una vez al día para ver que el
   cron corre y los contadores son sensatos.
+- `npm run metrics:show` (Paso 14) para ver la tabla
+  `daily_stats` con sesiones creadas/completadas/abandonadas,
+  descargas y duraciones por día UTC.
 - `docker stats coach-ai` puntualmente para RAM/CPU del container.
 - `sudo -iu postgres psql coach_ai_prod -c 'SELECT count(*) FROM sessions;'`
   para ver el volumen acumulado (debería quedarse bajo).
