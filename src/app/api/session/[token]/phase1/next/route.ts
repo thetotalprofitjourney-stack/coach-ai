@@ -1,7 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
+import { handleAnthropicError } from '@/lib/api/anthropic-errors';
 import { jsonError, jsonOk } from '@/lib/api/response';
 import { factorOf, getItemByIndex } from '@/lib/fase1/banco';
 import { callAdministrador } from '@/lib/fase1/call-administrador';
@@ -144,27 +144,3 @@ export async function POST(
   }
 }
 
-function handleAnthropicError(err: unknown, label: string) {
-  if (err instanceof Anthropic.AuthenticationError) {
-    console.error(`${label}: autenticación rechazada`);
-    return jsonError(
-      'INTERNAL',
-      'ANTHROPIC_API_KEY inválida o ausente.',
-      500,
-    );
-  }
-  if (err instanceof Anthropic.RateLimitError) {
-    console.error(`${label}: rate limit`);
-    return jsonError('INTERNAL', 'Rate limit de Anthropic.', 503);
-  }
-  if (err instanceof Anthropic.APIError) {
-    console.error(`${label}: APIError ${err.status}`);
-    return jsonError(
-      'INTERNAL',
-      `Anthropic respondió con error ${err.status}.`,
-      502,
-    );
-  }
-  console.error(`${label}: error inesperado`, err);
-  return jsonError('INTERNAL', 'Fallo al llamar a Anthropic.', 500);
-}
