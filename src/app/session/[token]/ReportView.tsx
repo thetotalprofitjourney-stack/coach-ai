@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -10,6 +10,15 @@ import {
 import { BLOCK_TITLES, reportFilename } from '@/lib/report/titles';
 
 type Format = 'pdf' | 'docx';
+
+const CLOSE_WINDOW_MS = 10 * 60 * 1000;
+
+function formatRemaining(ms: number): string {
+  const secs = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 export function ReportView({
   token,
@@ -28,13 +37,13 @@ export function ReportView({
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<Format | null>(null);
-  const [hasDownloaded, setHasDownloaded] = useState<boolean>(
-    initialDownloadedAt !== null,
-  );
+  const [expiresAt, setExpiresAt] = useState<number | null>(() => {
+    if (!initialDownloadedAt) return null;
+    return new Date(initialDownloadedAt).getTime() + CLOSE_WINDOW_MS;
+  });
+  const [now, setNow] = useState<number>(() => Date.now());
 
-  // initialDownloadedAt se consume también en el timer de cierre (C3).
-  void initialDownloadedAt;
-
+  const hasDownloaded = expiresAt !== null;
   const createdAtDate = new Date(createdAt);
 
   const download = async (format: Format) => {
@@ -60,7 +69,7 @@ export function ReportView({
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      setHasDownloaded(true);
+      setExpiresAt((prev) => prev ?? Date.now() + CLOSE_WINDOW_MS);
     } catch {
       setError('Error de red durante la descarga.');
     } finally {
@@ -68,7 +77,7 @@ export function ReportView({
     }
   };
 
-  const close = async () => {
+  const close = useCallback(async () => {
     setClosing(true);
     setError(null);
     try {
@@ -85,7 +94,36 @@ export function ReportView({
       setClosing(false);
       setError('Error de red.');
     }
-  };
+  }, [token, router]);
+
+  // El timer se mantiene en un ref para que los efectos sólo dependan de
+  // `expiresAt` y la referencia estable de `close` (useCallback).
+  const autoClosedRef = useRef(false);
+
+  useEffect(() => {
+    if (expiresAt === null) return;
+    const tick = () => setNow(Date.now());
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+
+  useEffect(() => {
+    if (expiresAt === null) return;
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      if (!autoClosedRef.current) {
+        autoClosedRef.current = true;
+        void close();
+      }
+      return;
+    }
+    const id = setTimeout(() => {
+      if (autoClosedRef.current) return;
+      autoClosedRef.current = true;
+      void close();
+    }, remaining);
+    return () => clearTimeout(id);
+  }, [expiresAt, close]);
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-10 text-base md:text-[17px]">
@@ -151,10 +189,14 @@ export function ReportView({
           </button>
         </div>
 
-        {hasDownloaded && (
+        {hasDownloaded && expiresAt !== null && (
           <p className="text-sm text-neutral-600">
             Ya has descargado tu informe. Puedes volver a descargarlo dentro de
-            los próximos 10 minutos.
+            los próximos 10 minutos. La sesión se cerrará automáticamente en{' '}
+            <span className="font-medium text-neutral-800" aria-live="polite">
+              {formatRemaining(expiresAt - now)}
+            </span>
+            .
           </p>
         )}
 
