@@ -448,6 +448,82 @@ Errores esperados:
 | `FinalReport` ausente en `phase2_completed` | 404 `REPORT_NOT_FOUND` |
 | Error de render interno | 500 `INTERNAL` |
 
+## Paso 9 — cron de limpieza
+
+Implementa §6.3. Una vez al día, un cron nocturno borra en hard
+delete todas las sesiones `closed` y todas las abandonadas
+(created_at anterior a 24 h y estado distinto de `closed`). El borrado
+de la fila en `sessions` arrastra en cascada `phase1_responses`,
+`phase1_handoff`, `phase2_turns`, `phase2_state` y `final_reports`
+por `onDelete: Cascade`. El hook `deleteReportBlobs` iteraría los
+`pdfPath`/`docxPath` asociados; hoy son siempre `null` (Paso 8
+renderiza on-demand), así que el contador de blobs es 0.
+
+**Schedule.** `vercel.json` declara el cron como `0 2 * * *` UTC, que
+equivale a 03:00 CET (invierno) / 04:00 CEST (verano) — dentro de la
+ventana 3:00-5:00 hora local que pide §6.3 todo el año. Vercel Cron
+es GET y añade `Authorization: Bearer $CRON_SECRET` si la env var
+está configurada.
+
+**Invocación manual (curl).** Útil para validar en producción:
+
+```bash
+HOST="https://tu-despliegue.app"
+CRON_SECRET="..."   # el mismo valor que tenga Vercel como env var
+
+# 1. Dry-run: cuenta sin borrar.
+curl -sS -H "Authorization: Bearer $CRON_SECRET" \
+  "$HOST/api/cron/cleanup?dryRun=1" | jq
+
+# 2. Ejecución real.
+curl -sS -H "Authorization: Bearer $CRON_SECRET" \
+  "$HOST/api/cron/cleanup" | jq
+```
+
+Respuesta esperada (HTTP 200):
+
+```json
+{
+  "ok": true,
+  "event": "cron_cleanup",
+  "timestamp": "2026-04-21T02:00:03.412Z",
+  "durationMs": 87,
+  "dryRun": false,
+  "closedCount": 3,
+  "abandonedCount": 0,
+  "blobsDeletedCount": 0
+}
+```
+
+**Invocación manual (CLI).** Corre `runCleanup` directamente contra
+la DB configurada en `DATABASE_URL`, sin pasar por HTTP:
+
+```bash
+npm run cron:cleanup:dry   # simula
+npm run cron:cleanup       # borra
+```
+
+Útil en dev con Postgres local y en prod como fallback si Vercel
+Cron fallara.
+
+**Log de auditoría (§7.3).** Cada ejecución escribe una sola línea
+JSON en stdout con el event `cron_cleanup` y los contadores — sin
+datos personales. En Vercel aparece en los Logs del deployment; en
+dev se imprime en consola. Ejemplo:
+
+```json
+{"event":"cron_cleanup","timestamp":"...","durationMs":87,"dryRun":false,"closedCount":3,"abandonedCount":0,"blobsDeletedCount":0}
+```
+
+Errores esperados:
+
+| Caso | Respuesta |
+| --- | --- |
+| Sin header `Authorization` | 401 `UNAUTHORIZED` |
+| Header no coincide con `CRON_SECRET` | 401 `UNAUTHORIZED` |
+| `CRON_SECRET` no configurado en el servidor | 500 `INTERNAL` |
+| Fallo de DB durante el `deleteMany` | 500 `INTERNAL` (la transacción aborta, no hay borrado parcial) |
+
 ## Documentación del producto
 
 La documentación completa (visión, flujo, arquitectura, prompts de las IAs,
