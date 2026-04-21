@@ -50,6 +50,11 @@ model Session {
 
   @@index([status, createdAt])
   @@index([closedAt])
+  // Recolector de métricas diarias (§7.3, Paso 14): particiona por
+  // DATE(created_at) y filtra por status. El índice existente lidera
+  // por status, útil para el cleanup; éste lidera por created_at y
+  // sirve rangos diarios sobre la tabla completa.
+  @@index([createdAt, status], map: "idx_sessions_created_status")
   @@map("sessions")
 }
 
@@ -112,6 +117,30 @@ model Phase2State {
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("phase2_state")
+}
+
+// Métricas agregadas sin PII (§7.3, Paso 14). Poblada por el cron
+// nocturno antes del borrado, persiste contadores por día (UTC) para
+// responder a preguntas operativas más allá del TTL 24-48h de las
+// sesiones. Sin FK a `sessions`: las sesiones ya están borradas
+// cuando estas filas se consolidan.
+model DailyStats {
+  date                    DateTime @id @db.Date
+  sessionsCreated         Int      @default(0) @map("sessions_created")
+  sessionsFormSubmitted   Int      @default(0) @map("sessions_form_submitted")
+  sessionsPhase1Completed Int      @default(0) @map("sessions_phase1_completed")
+  sessionsPhase2Completed Int      @default(0) @map("sessions_phase2_completed")
+  sessionsClosed          Int      @default(0) @map("sessions_closed")
+  sessionsAbandoned       Int      @default(0) @map("sessions_abandoned")
+  reportsDownloaded       Int      @default(0) @map("reports_downloaded")
+  avgPhase2Turns          Float?   @map("avg_phase2_turns")
+  avgDurationSeconds      Float?   @map("avg_duration_seconds")
+  p50DurationSeconds      Int?     @map("p50_duration_seconds")
+  p95DurationSeconds      Int?     @map("p95_duration_seconds")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@map("daily_stats")
 }
 
 model FinalReport {
