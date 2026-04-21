@@ -47,6 +47,7 @@ model Session {
   phase2Turns     Phase2Turn[]
   phase2State     Phase2State?
   finalReport     FinalReport?
+  llmCalls        LlmCall[]
 
   @@index([status, createdAt])
   @@index([closedAt])
@@ -124,23 +125,66 @@ model Phase2State {
 // responder a preguntas operativas más allá del TTL 24-48h de las
 // sesiones. Sin FK a `sessions`: las sesiones ya están borradas
 // cuando estas filas se consolidan.
+//
+// Las 8 columnas `total*` / `avg*` / `avgLatency*` las añade el Paso
+// 15 (coste de API por sesión y latencia, §7.3). Todas nullable
+// porque un día sin tráfico productivo no tiene valores.
 model DailyStats {
-  date                    DateTime @id @db.Date
-  sessionsCreated         Int      @default(0) @map("sessions_created")
-  sessionsFormSubmitted   Int      @default(0) @map("sessions_form_submitted")
-  sessionsPhase1Completed Int      @default(0) @map("sessions_phase1_completed")
-  sessionsPhase2Completed Int      @default(0) @map("sessions_phase2_completed")
-  sessionsClosed          Int      @default(0) @map("sessions_closed")
-  sessionsAbandoned       Int      @default(0) @map("sessions_abandoned")
-  reportsDownloaded       Int      @default(0) @map("reports_downloaded")
-  avgPhase2Turns          Float?   @map("avg_phase2_turns")
-  avgDurationSeconds      Float?   @map("avg_duration_seconds")
-  p50DurationSeconds      Int?     @map("p50_duration_seconds")
-  p95DurationSeconds      Int?     @map("p95_duration_seconds")
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+  date                          DateTime @id @db.Date
+  sessionsCreated               Int      @default(0) @map("sessions_created")
+  sessionsFormSubmitted         Int      @default(0) @map("sessions_form_submitted")
+  sessionsPhase1Completed       Int      @default(0) @map("sessions_phase1_completed")
+  sessionsPhase2Completed       Int      @default(0) @map("sessions_phase2_completed")
+  sessionsClosed                Int      @default(0) @map("sessions_closed")
+  sessionsAbandoned             Int      @default(0) @map("sessions_abandoned")
+  reportsDownloaded             Int      @default(0) @map("reports_downloaded")
+  avgPhase2Turns                Float?   @map("avg_phase2_turns")
+  avgDurationSeconds            Float?   @map("avg_duration_seconds")
+  p50DurationSeconds            Int?     @map("p50_duration_seconds")
+  p95DurationSeconds            Int?     @map("p95_duration_seconds")
+  // BigInt en tokens: un día muy cargado (1000 sesiones × cache write
+  // del coach) ya supera los 2^31. Suma lineal sobre llm_calls del día.
+  totalInputTokens              BigInt?  @map("total_input_tokens")
+  totalOutputTokens             BigInt?  @map("total_output_tokens")
+  totalCacheCreationTokens      BigInt?  @map("total_cache_creation_tokens")
+  totalCacheReadTokens          BigInt?  @map("total_cache_read_tokens")
+  totalCostUsd                  Float?   @map("total_cost_usd")
+  avgCostUsdPerCompletedSession Float?   @map("avg_cost_usd_per_completed_session")
+  avgLatencyMsHaiku             Int?     @map("avg_latency_ms_haiku")
+  avgLatencyMsSonnet            Int?     @map("avg_latency_ms_sonnet")
+  avgLatencyMsOpus              Int?     @map("avg_latency_ms_opus")
+  createdAt                     DateTime @default(now()) @map("created_at")
+  updatedAt                     DateTime @updatedAt @map("updated_at")
 
   @@map("daily_stats")
+}
+
+// Registro por llamada a la API de Anthropic en rutas productivas
+// (§7.3, Paso 15). Transitoria: poblada durante el uso normal, agregada
+// por `collectDailyStats` y borrada en cascada con las sesiones por el
+// cron nocturno. Consistente con §6.4: los datos concretos por sesión
+// desaparecen; sólo sobreviven los agregados en `daily_stats`.
+//
+// `model` guarda la etiqueta normalizada corta ("haiku-4-5",
+// "sonnet-4-6", "opus-4-7") — el mapping vive en
+// `src/lib/anthropic/models.ts` y `src/lib/metrics/pricing.ts`.
+model LlmCall {
+  id                       String   @id @default(uuid()) @db.Uuid
+  sessionId                String   @map("session_id") @db.Uuid
+  model                    String
+  kind                     String
+  inputTokens              Int      @default(0) @map("input_tokens")
+  outputTokens             Int      @default(0) @map("output_tokens")
+  cacheCreationInputTokens Int      @default(0) @map("cache_creation_input_tokens")
+  cacheReadInputTokens     Int      @default(0) @map("cache_read_input_tokens")
+  durationMs               Int      @map("duration_ms")
+  createdAt                DateTime @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("llm_calls")
 }
 
 model FinalReport {
