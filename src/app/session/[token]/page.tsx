@@ -4,6 +4,7 @@ import { sessionTokenSchema } from '@/lib/api/schemas';
 import { InitialForm } from './InitialForm';
 import { Phase1Chat } from './Phase1Chat';
 import { Phase1Placeholder } from './Phase1Placeholder';
+import { Phase2Bootstrap } from './Phase2Bootstrap';
 import { ClosedScreen } from './ClosedScreen';
 
 // El estado de la sesión cambia por acciones del usuario (POST /form, etc.)
@@ -32,6 +33,7 @@ export default async function SessionPage({
     case 'phase1_in_progress':
       return <Phase1Chat token={tokenParse.data} />;
     case 'phase1_completed':
+      return <Phase2Bootstrap token={tokenParse.data} />;
     case 'phase2_in_progress':
     case 'phase2_completed':
       return <Phase1Placeholder />;
