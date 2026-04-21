@@ -1,13 +1,16 @@
 // scripts/fase1-compare.ts
 //
-// Ejecuta los 3 fixtures de usuario simulado contra los endpoints dev
-// de Fase 1 (`/api/dev/fase1/run` y `/api/dev/fase1/{runId}/answer`) y
+// Ejecuta los fixtures de usuario simulado contra los endpoints dev de
+// Fase 1 (`/api/dev/fase1/run` y `/api/dev/fase1/{runId}/answer`) y
 // escribe los hand-offs resultantes en `src/fixtures/handoffs-generados/`
 // para que el operador los compare a ojo con los 6 hand-offs del piloto
-// (`docs/handoff-0*.md`).
+// (`docs/handoff-0*.md`). El Paso 12 amplía la cobertura a los 6 slugs
+// (daniel, carmen, elena, javier, lucia, tomas) y añade tabla resumen +
+// flag `--slug`.
 //
 // Uso (en producción — no en dev):
-//   SESSION_CREATE_SECRET=... FASE1_BASE_URL=https://... npx tsx scripts/fase1-compare.ts
+//   SESSION_CREATE_SECRET=... FASE1_BASE_URL=https://... npm run fase1:compare
+//   SESSION_CREATE_SECRET=... npm run fase1:compare -- --slug elena
 //
 // Si FASE1_BASE_URL no se define, usa http://localhost:3000. El script
 // no levanta el servidor — el operador lo dispara manualmente antes.
@@ -28,6 +31,17 @@ if (!SECRET) {
 }
 
 const OUTPUT_DIR = join(process.cwd(), 'src', 'fixtures', 'handoffs-generados');
+
+function parseSlugArg(): string | null {
+  const idx = process.argv.indexOf('--slug');
+  if (idx === -1) return null;
+  const value = process.argv[idx + 1];
+  if (!value) {
+    console.error('ERROR: --slug requiere un valor. Aborto.');
+    process.exit(1);
+  }
+  return value;
+}
 
 interface RunResponse {
   runId: string;
@@ -113,24 +127,86 @@ async function runFixture(fixture: Fase1Fixture): Promise<unknown> {
   return lastAnswer.handoff;
 }
 
-async function main() {
-  mkdirSync(OUTPUT_DIR, { recursive: true });
+interface Result {
+  slug: string;
+  status: 'ok' | 'fallo';
+  durationMs: number;
+  error?: string;
+}
 
-  for (const fixture of FASE1_FIXTURES) {
+function pad(value: string, width: number): string {
+  if (value.length >= width) return value;
+  return value + ' '.repeat(width - value.length);
+}
+
+function printSummary(results: readonly Result[]): void {
+  const slugW = Math.max(6, ...results.map((r) => r.slug.length));
+  const header = `| ${pad('slug', slugW)} | status | duración |`;
+  const sep = `|${'-'.repeat(slugW + 2)}|--------|----------|`;
+  console.log('\nResumen Fase 1:');
+  console.log(header);
+  console.log(sep);
+  for (const r of results) {
+    const secs = (r.durationMs / 1000).toFixed(1);
+    console.log(
+      `| ${pad(r.slug, slugW)} | ${pad(r.status, 6)} | ${pad(`${secs}s`, 8)} |`,
+    );
+  }
+  const failed = results.filter((r) => r.status === 'fallo');
+  if (failed.length > 0) {
+    console.log(
+      `\nFallaron ${failed.length}/${results.length}: ${failed.map((r) => r.slug).join(', ')}`,
+    );
+  }
+}
+
+async function main() {
+  const slugFilter = parseSlugArg();
+  const fixtures = slugFilter
+    ? FASE1_FIXTURES.filter((f) => f.slug === slugFilter)
+    : FASE1_FIXTURES;
+
+  if (fixtures.length === 0) {
+    console.error(
+      `ERROR: no existe ningún fixture con slug '${slugFilter}'. ` +
+        `Disponibles: ${FASE1_FIXTURES.map((f) => f.slug).join(', ')}`,
+    );
+    process.exit(1);
+  }
+
+  mkdirSync(OUTPUT_DIR, { recursive: true });
+  const results: Result[] = [];
+
+  for (const fixture of fixtures) {
+    const startedAt = Date.now();
     try {
       const handoff = await runFixture(fixture);
       const outPath = join(OUTPUT_DIR, `${fixture.slug}.json`);
       writeFileSync(outPath, JSON.stringify(handoff, null, 2), 'utf8');
       console.log(`  hand-off escrito en ${outPath}`);
+      results.push({
+        slug: fixture.slug,
+        status: 'ok',
+        durationMs: Date.now() - startedAt,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`  fallo en fixture ${fixture.slug}: ${msg}`);
+      results.push({
+        slug: fixture.slug,
+        status: 'fallo',
+        durationMs: Date.now() - startedAt,
+        error: msg,
+      });
     }
   }
 
-  console.log(
-    `\nHecho. Comparar salidas con docs/handoff-0{1..6}-*.md en ${OUTPUT_DIR}`,
-  );
+  printSummary(results);
+  console.log(`\nHand-offs en ${OUTPUT_DIR}`);
+
+  if (results.some((r) => r.status === 'fallo')) {
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

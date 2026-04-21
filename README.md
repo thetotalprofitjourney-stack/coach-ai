@@ -6,6 +6,24 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
+Paso 12 — Testing end-to-end con los seis perfiles (§7.1 y §7.2).
+Última fase de validación antes del Paso 13 (producción). Amplía los
+fixtures de Fase 1 de 3 a los 6 slugs piloto (`daniel`, `carmen`,
+`elena`, `javier`, `lucia`, `tomas`) por ingeniería inversa de los
+hand-offs `docs/handoff-0{1..6}-*.md`. Los dos scripts del Paso 6/7
+(`npm run fase1:compare`, `npm run e2e:compare`) cubren ahora los 6
+slugs, admiten `--slug {nombre}` para iterar un solo perfil, e
+imprimen tabla resumen al final. `e2e:compare` persiste la
+transcripción de Fase 2 de cada run en
+`src/fixtures/transcripts-generados/{slug}.md` (gitignored). La rúbrica
+de revisión humana vive en `docs/paso-12-rubrica.md` — cubre hand-off,
+transcripción, avisos progresivos de cierre (por revisión estática +
+sesión autoadministrada del operador en staging, porque la app es no
+supervisada), informe final y tiempos. Criterio go/no-go al Paso 13:
+si los 6 slugs pasan la rúbrica, el producto está listo para
+producción. Ver la sección "Paso 12 — Testing end-to-end" al final de
+este README.
+
 Paso 11 — Landing pública (§2.1 y §6.4). La home `/` deja de ser
 placeholder: hero + "Qué es" / "Cómo funciona" / "Qué obtienes" /
 vídeo / precio con dos CTA "Empezar mi sesión" que invocan el endpoint
@@ -133,20 +151,28 @@ Rutas activas:
 ## Paso 7 — smoke test end-to-end
 
 El script `scripts/fase1-to-fase2-compare.ts` atraviesa el flujo real
-completo (create → form → phase1/\* → phase2/\* → close) con los 3
-fixtures simulados (`daniel`, `carmen`, `tomas`). No verifica calidad
-del output del LLM: sólo confirma que el flujo no rompe y que las
-transiciones de estado son correctas.
+completo (create → form → phase1/\* → phase2/\* → close) con los 6
+fixtures piloto. El Paso 12 amplió de 3 a 6 slugs, añadió
+persistencia de la transcripción de Fase 2 por slug y una tabla
+resumen al final con `turnosCoach | turnosUsuario | duración |
+parseStatus`.
 
 ```bash
 SESSION_CREATE_SECRET=... COACH_BASE_URL=https://... \
   npm run e2e:compare
+
+# sólo uno (soportado desde el Paso 12)
+SESSION_CREATE_SECRET=... COACH_BASE_URL=https://... \
+  npm run e2e:compare -- --slug javier
 ```
 
 Cada fixture crea una sesión real. Inspeccionar resultado con
 `npm run db:studio` — cada sesión debe acabar en `status='closed'`, con
 16 filas en `phase1_responses`, un `phase1_handoff`, N filas en
-`phase2_turns`, un `phase2_state` y un `final_reports`.
+`phase2_turns`, un `phase2_state` y un `final_reports`. Las
+transcripciones de Fase 2 quedan en
+`src/fixtures/transcripts-generados/{slug}.md` (gitignored) para
+aplicar la rúbrica de revisión humana (`docs/paso-12-rubrica.md`).
 
 ## Stack
 
@@ -394,20 +420,29 @@ Requisitos:
   thinking puede tardar 60-120 s. Las rutas declaran `maxDuration = 300`.
 
 Fixtures disponibles (derivados por ingeniería inversa de los hand-offs
-piloto):
+piloto — los 6 slugs del Paso 12):
 
 | Slug | Perfil | Dilema |
 | --- | --- | --- |
 | `daniel` | D-C | Montar consultoría propia tras 12 años en una empresa |
 | `carmen` | S-D | Jubilación y qué hacer con la empresa familiar |
+| `elena` | I-S | Replanteamiento existencial tras 18 años fuera del mercado |
+| `javier` | D-C | Meta declarada: CEO en 4 años |
+| `lucia` | C-D | Fuga de consultoría sin saber adónde ir |
 | `tomas` | I-D | Mudanza familiar a Zúrich por oferta laboral |
 
 Uso:
 
 ```bash
+# los 6 slugs
 SESSION_CREATE_SECRET=... \
 FASE1_BASE_URL=https://tu-despliegue.app \
 npm run fase1:compare
+
+# sólo uno (el script soporta --slug desde el Paso 12)
+SESSION_CREATE_SECRET=... \
+FASE1_BASE_URL=https://tu-despliegue.app \
+npm run fase1:compare -- --slug elena
 ```
 
 Cada ejecución:
@@ -744,6 +779,95 @@ funcionales), multi-idioma (§7.4: solo español en MVP), Open Graph
 avanzado, sitemap, A/B testing de copy, landings alternativas, CMS.
 Se retoma en el Paso 12 (testing end-to-end con los seis perfiles) y
 Paso 13 (producción).
+
+## Paso 12 — Testing end-to-end con los seis perfiles
+
+Última fase de validación antes del Paso 13 (producción). Cubre §7.1
+(paso 12 del orden de construcción) y §7.2 (testing manual documentado
+por flujo crítico). No introduce cadenas LLM nuevas: se ejercitan las
+existentes con los 6 fixtures piloto.
+
+**Qué añade.**
+
+- 3 fixtures nuevos de Fase 1 (`elena`, `javier`, `lucia`) derivados
+  por ingeniería inversa de `docs/handoff-0{3,4,5}-*.md`. El barrel
+  `src/fixtures/fase1/index.ts` exporta ahora los 6 slugs del piloto.
+- `npm run fase1:compare` cubre los 6 slugs; admite `--slug {nombre}`
+  para iterar uno solo; imprime tabla resumen con `status | duración`
+  por slug; `exit 1` si alguno falla.
+- `npm run e2e:compare` cubre los 6 slugs con mensajes de Fase 2
+  específicos por perfil (~10 mensajes plausibles por slug, escritos a
+  mano); admite `--slug`; persiste la transcripción completa de cada
+  run en `src/fixtures/transcripts-generados/{slug}.md` (gitignored);
+  imprime tabla resumen con `status | coachTurns | userTurns |
+  duración | parseStatus`; `exit 1` si alguno falla.
+- `docs/paso-12-rubrica.md` — rúbrica de revisión humana en 5
+  secciones, ejecutable por el operador en una tarde sobre los 6
+  artefactos generados.
+
+**Por qué los mensajes de Fase 2 son scripted y no generativos.** El
+simulador de usuario es un array literal de strings por slug. No es un
+humano y no adapta sus respuestas al coach. Alcanza ~11 turnos de
+coach, muy por debajo del tope de 50 (§5.2). Los avisos progresivos
+`[[QUEDAN 10 PREGUNTAS]]` / `[[QUEDAN 5 PREGUNTAS]]` / `[[CIERRA YA]]`
+(inyectados en `src/lib/fase2/render-state.ts:57-59` para los turnos
+40/45/50) **no se pueden ejercitar desde el script**. La rúbrica §3
+los valida de otra forma: revisión estática del código + una sesión
+autoadministrada del operador en staging. Supervisar sesiones reales
+de usuarios no es una opción — §6.4 lo prohíbe y la app es no
+supervisada en producción.
+
+**Uso.**
+
+```bash
+# 1. Fase 1 aislada contra los endpoints dev. ~1 min por slug.
+SESSION_CREATE_SECRET=... \
+FASE1_BASE_URL=https://tu-despliegue.app \
+npm run fase1:compare
+
+# 2. Flujo completo contra el producto. ~2-4 min por slug con thinking.
+SESSION_CREATE_SECRET=... \
+COACH_BASE_URL=https://tu-despliegue.app \
+npm run e2e:compare
+
+# 3. Abrir docs/paso-12-rubrica.md y ejecutarlo sobre los 6 slugs.
+# 4. Ejecutar la sección §3.2 de la rúbrica: una sesión completa hasta
+#    turno 50 contra staging con el operador como usuario.
+```
+
+**Coste estimado por run completa (los 6 slugs, e2e).** Fase 1 por
+slug: ~16 llamadas del administrador (Haiku) + 1 de síntesis (Sonnet
+4.6 + extended thinking). Fase 2 por slug: 1 bootstrap + ~10 mensajes
+= ~11 pares (Haiku auxiliar + Opus 4.7 con thinking 10k). El prompt
+caching reduce el coste de los tokens del sistema a partir de la
+segunda llamada dentro de cada sesión, pero los runs son
+independientes entre slugs, así que cada uno paga su primera
+escritura. En el orden de unos pocos euros por ejecución completa de
+los 6. Sin contador automático — no se expone `usage` en los endpoints
+de producción.
+
+**Artefactos persistidos (no versionados).**
+
+- `src/fixtures/handoffs-generados/{slug}.json` — 6 hand-offs.
+- `src/fixtures/transcripts-generados/{slug}.md` — 6 transcripciones
+  de Fase 2 con metadatos en cabecera.
+- BD: `sessions`, `phase1_responses`, `phase1_handoff`, `phase2_state`,
+  `phase2_turns`, `final_reports`. Inspeccionables con
+  `npm run db:studio`.
+
+**Criterio go/no-go al Paso 13.**
+
+- **Go** — los 6 slugs pasan la rúbrica §1, §2, §4, §5 y la sesión
+  autoadministrada §3.2 cumple. El producto está listo para
+  producción.
+- **No-go** — si al menos un slug falla una línea de §1, §2 o §3, se
+  abre un Paso 12bis (iteración de prompts) antes de seguir. No hay
+  auto-rollback: la decisión la toma el operador leyendo los
+  artefactos.
+
+**Fuera de alcance.** Deploy real, registro del webhook en el
+dashboard de Stripe, env vars de live, propagación del dominio. Todo
+eso es el Paso 13.
 
 ## Documentación del producto
 
