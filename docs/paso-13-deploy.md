@@ -580,3 +580,215 @@ journalctl -t coach-ai-cleanup --since '5 minutes ago'
 Alternativa sin crontab, usando el fallback del Paso 9
 (`npm run cron:cleanup`): ejecutar desde el container puntualmente.
 No sustituye al crontab porque requiere que alguien lo dispare.
+
+---
+
+## §9 Stripe
+
+El Paso 10 ya documenta el detalle conceptual (puente único por
+`metadata.session_token`, idempotencia, endpoints involucrados). Aquí
+se concreta el **orden operativo** de configuración en el dashboard
+de Stripe. Se hace primero en **test mode** para cubrir toda la
+validación del Paso 12 y, tras el *go*, se replica en **live mode**.
+
+### §9.1 Stripe en test mode (staging)
+
+1. Entrar al dashboard con el toggle superior en **"Test mode"**.
+2. **Product + Price**:
+   - Products → Add product → Name: "Sesión Coach AI".
+   - Pricing → One-time → importe del MVP (p. ej. 149 €).
+   - Guardar. Copiar el `price_test_...` resultante a
+     `STRIPE_PRICE_ID` en `.env.production`.
+3. **API key**:
+   - Developers → API keys → "Secret key" (test).
+   - Copiar el valor `sk_test_...` a `STRIPE_SECRET_KEY`.
+4. **Webhook**:
+   - Developers → Webhooks → Add endpoint.
+   - URL: `https://coach.totalprofitjourney.com/api/stripe/webhook`
+     (el dominio del staging con SSL ya configurado en §7).
+   - Events: **únicamente** `checkout.session.completed`. No añadir
+     otros; la ruta los ignora y sólo gastas llamadas de más.
+   - Guardar. Copiar el **Signing secret** `whsec_...` a
+     `STRIPE_WEBHOOK_SECRET` en `.env.production`.
+5. **`NEXT_PUBLIC_SESSION_PRICE_DISPLAY`**: ajustar al mismo importe
+   del Price (p. ej. `"149 €"`). Recordatorio: es inline en el
+   bundle; aplicar con `docker compose ... build --no-cache` + `up -d`.
+
+Recargar el container con la config nueva:
+
+```bash
+cd ~/coach-ai
+docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Validación rápida del webhook con el dashboard:
+
+- Developers → Webhooks → endpoint → "Send test webhook".
+- Evento: `checkout.session.completed`.
+- Debe devolver **200** en <1 s.
+- En los logs del container (`docker compose logs app`) debe
+  aparecer una línea JSON con `event='stripe_webhook'`, `outcome`
+  (`ignored` / `idempotent` / `created`) y `durationMs`.
+
+### §9.2 Stripe en live mode (cutover)
+
+**No se ejecuta hasta haber obtenido *go* en §11**. Una vez con el go:
+
+1. Toggle del dashboard a **"Live mode"**.
+2. Repetir los pasos 2-4 del §9.1 en live:
+   - Crear el Product "Sesión Coach AI" y el Price live con el
+     importe final. Copiar `price_live_...`.
+   - API keys → Secret key live (`sk_live_...`).
+   - Webhook: `https://<dominio-final>/api/stripe/webhook`,
+     únicamente `checkout.session.completed`. Copiar el signing
+     secret live (`whsec_...`, distinto del test).
+3. Sustituir en `.env.production`:
+   - `STRIPE_SECRET_KEY` → `sk_live_...`
+   - `STRIPE_WEBHOOK_SECRET` → el `whsec_...` del endpoint live
+   - `STRIPE_PRICE_ID` → `price_live_...`
+   - `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` y `APP_PUBLIC_URL` si
+     cambia el dominio (ver §12).
+4. Rebuild + reinicio:
+
+```bash
+docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml up -d
+```
+
+5. **Canary con 1 € real**. Comprar una sesión con una tarjeta real
+   del operador por el importe mínimo configurable (o aprovechar el
+   propio importe si se acepta). Validar el flujo completo
+   hasta descargar el informe. Si algo falla, rollback (§15).
+
+---
+
+## §10 Validación en staging
+
+Con §9.1 completado, el staging está listo para ejercitar las cadenas
+LLM reales contra Stripe test.
+
+### §10.1 Canary de rutas públicas
+
+```bash
+COACH_BASE_URL=https://coach.totalprofitjourney.com npm run healthcheck
+```
+
+Todas las probes deben salir **ok**. Si alguna falla, no tiene
+sentido seguir: hay un problema de proxy, DNS o build. Resolver
+antes.
+
+### §10.2 Fase 1 completa contra el producto
+
+Los seis slugs del Paso 12, aislados contra `/api/dev/fase1/*`:
+
+```bash
+SESSION_CREATE_SECRET=<el mismo que en .env.production> \
+FASE1_BASE_URL=https://coach.totalprofitjourney.com \
+npm run fase1:compare
+```
+
+El script persiste los 6 hand-offs en
+`src/fixtures/handoffs-generados/{slug}.json` (gitignored). Tabla
+resumen al final; `exit 1` si algún slug falla.
+
+### §10.3 End-to-end completo
+
+Flujo `create → form → phase1 → phase2 → close` por los 6 slugs:
+
+```bash
+SESSION_CREATE_SECRET=<...> \
+COACH_BASE_URL=https://coach.totalprofitjourney.com \
+npm run e2e:compare
+```
+
+Persiste las 6 transcripciones en
+`src/fixtures/transcripts-generados/{slug}.md`. Cada slug tarda 2-4
+minutos con thinking activo; el conjunto ~20 minutos. Coste: unos
+pocos euros de Anthropic.
+
+Ambos scripts se ejecutan desde una máquina con Node 20+ instalado
+(el portátil del operador o el propio servidor; la clave
+`SESSION_CREATE_SECRET` viaja sólo por HTTPS en las llamadas).
+
+---
+
+## §11 Rúbrica del Paso 12 — gate de go/no-go
+
+Con los artefactos del §10 generados, aplicar la rúbrica:
+
+- [ ] Abrir `docs/paso-12-rubrica.md` y recorrer §1, §2, §4 y §5 para
+      los 6 slugs.
+- [ ] Ejecutar §3.2 (sesión autoadministrada en staging hasta turno
+      50). Este ítem es el único que requiere una run manual larga
+      (~40-60 min). Recomendación del propio Paso 12: hacerlo con el
+      fixture `lucia` por su tendencia a no decidir.
+
+**Criterio**:
+
+- **Go** → los 6 slugs pasan §1/§2/§4/§5 y la sesión
+  autoadministrada cumple §3.2. El producto está listo para la
+  transición a Stripe live (§9.2) y al cutover de DNS (§12).
+- **No-go** → al menos un slug falla una línea de §1/§2/§3. Abrir un
+  Paso 12bis (iteración de prompts) antes de seguir. Mantener el
+  staging para iterar; **no** proceder al §9.2 ni al §12.
+
+Fallos específicos en §4 (bloques faltantes, `parseStatus != ok`)
+apuntan a código, no a prompts: se corrigen en el repo y se relanza
+`e2e:compare` hasta que pasen.
+
+---
+
+## §12 Cutover de DNS y anuncio
+
+**Precondición**: go en §11 + Stripe live completado en §9.2 + canary
+del §9.2.5 exitoso.
+
+### §12.1 DNS
+
+El staging puede haber estado en un subdominio temporal
+(`staging-coach.`, un dominio ad-hoc, etc.). El cutover apunta el
+dominio final al servidor:
+
+1. Panel DNS del operador → record `A` del dominio final apuntando a
+   la IP del servidor (`A coach.totalprofitjourney.com → <IP>`).
+   TTL corto (300 s) durante el cutover para permitir rollback
+   rápido; subirlo a 3600 s tras 24 h estables.
+2. Esperar propagación: `dig +short coach.totalprofitjourney.com`
+   debe devolver la IP nueva desde varias redes.
+3. Si el dominio final es distinto al de staging, emitir certificado
+   adicional con certbot (§7.2) y reiniciar Nginx.
+
+### §12.2 Ajuste de `APP_PUBLIC_URL`
+
+Si el dominio cambia entre staging y producción, actualizar
+`APP_PUBLIC_URL` en `.env.production` y **rebuild** (la variable es
+consumida por `src/app/layout.tsx` como `metadataBase` y por
+`/api/checkout/create` al construir `success_url`/`cancel_url`).
+Recordatorio:
+
+```bash
+docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Acordarse de **actualizar la URL del webhook en Stripe live**
+(dashboard → Webhooks → endpoint → Update) si cambia el dominio.
+
+### §12.3 Validación post-cutover
+
+```bash
+COACH_BASE_URL=https://<dominio-final> npm run healthcheck
+```
+
+Y una compra real del operador con tarjeta live por el importe del
+Price. El flujo debe terminar con informe descargable. Si algo
+falla, rollback (§15).
+
+### §12.4 Anuncio
+
+Ya es seguro comunicar la URL a usuarios. El resto del Paso 13
+(§13-§15) es régimen permanente del operador.
