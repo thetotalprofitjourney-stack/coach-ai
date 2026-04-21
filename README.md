@@ -6,18 +6,20 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
-Paso 6 — Fase 1 completa en modo validación aislada. El administrador
-DISC (Haiku 4.5) administra los 16 ítems del banco con prompt y banco
-cacheados; el servidor parsea la letra del usuario con un parser
-determinista y reintenta hasta tres veces si el usuario no la indica;
-tras el ítem 16 la síntesis (Sonnet 4.6 + extended thinking) produce el
-hand-off JSON validado contra `HandoffSchema` (Zod) con la misma forma
-que el tipo `Handoff` de Fase 2. Store en memoria (paralelo al Paso 5);
-sin Prisma todavía — el cableado a `Phase1Response`/`Phase1Handoff` y al
-flujo real `Session.status` entra en el Paso 7, junto con la integración
-Fase 1 → Fase 2. Paso 5 (coach de Fase 2 en validación aislada) sigue
-operativo sin cambios. Orden de construcción en
-`docs/proyecto-completo.md` §7.1.
+Paso 7 — integración end-to-end Fase 1 → hand-off → Fase 2 → informe con
+persistencia Prisma y UI de chat. Desde la pantalla pública
+`/session/{token}` un usuario atraviesa el flujo completo: formulario →
+16 ítems DISC → hand-off persistido en `phase1_handoff` → ~50 turnos con
+el coach (Opus 4.7 + extended thinking) → informe de 11 bloques (§5.4)
+parseado a `final_reports.report_content` → cierre. Las transiciones de
+`Session.status` son monotónicas (`created` → `phase1_in_progress` →
+`phase1_completed` → `phase2_in_progress` → `phase2_completed` →
+`closed`) y cada endpoint valida el estado esperado; los intentos de
+salto devuelven 409. Los endpoints dev (`/api/dev/fase1/*`,
+`/api/dev/coach/*`) siguen activos para validación aislada y no
+comparten camino con el flujo real. Orden de construcción en
+`docs/proyecto-completo.md` §7.1. Paso 8 (materialización PDF/DOCX del
+informe) y Paso 9 (cron nocturno de borrado) quedan fuera.
 
 Endpoints activos:
 
@@ -25,6 +27,25 @@ Endpoints activos:
   `created`. Protegido con el header `X-Session-Create-Secret`.
 - `POST /api/session/{token}/form` — recibe el formulario inicial (§2.3),
   valida con Zod, guarda los datos y transiciona a `phase1_in_progress`.
+- `POST /api/session/{token}/phase1/start` — devuelve el primer mensaje
+  del administrador. Idempotente; los turnos de Fase 1 no se persisten.
+- `POST /api/session/{token}/phase1/next` — respuesta del usuario al ítem
+  actual. Upserta `phase1_responses` y pide al administrador el siguiente
+  mensaje (o la despedida tras el ítem 16).
+- `POST /api/session/{token}/phase1/finish` — dispara la síntesis con
+  Sonnet 4.6, persiste `phase1_handoff` y transiciona a
+  `phase1_completed`. `maxDuration=300`.
+- `POST /api/session/{token}/phase2/bootstrap` — crea `phase2_state`
+  inicial, emite el primer turno del coach y transiciona a
+  `phase2_in_progress`. Requiere `phase1_completed`.
+- `POST /api/session/{token}/phase2/message` — un turno completo: corre
+  auxiliar (Haiku), actualiza `phase2_state` y emite la siguiente
+  pregunta del coach (Opus 4.7 + thinking 10k).
+- `POST /api/session/{token}/phase2/finish` — parsea los 11 bloques del
+  último turno del coach, persiste `final_reports` y transiciona a
+  `phase2_completed`.
+- `POST /api/session/{token}/close` — transición terminal a `closed`
+  desde cualquier estado activo.
 - `POST /api/dev/anthropic-ping` — endpoint interno del operador.
   Hace una llamada real al SDK de Anthropic con prompt caching y devuelve
   la respuesta, las métricas de `usage` y la latencia. Reutiliza el mismo
@@ -45,10 +66,30 @@ Endpoints activos:
 
 Rutas activas:
 
-- `GET /session/{token}` — pantalla pública anónima. Si la sesión está en
-  `created` muestra el formulario inicial; si ya avanzó, muestra el
-  placeholder "Fase 1 en construcción"; si está `closed`, la pantalla de
-  sesión cerrada. Token inválido o inexistente → 404.
+- `GET /session/{token}` — pantalla pública anónima. Pinta el componente
+  correspondiente al `Session.status`: formulario inicial (`created`),
+  chat con el administrador DISC (`phase1_in_progress`), transición con
+  spinner (`phase1_completed`), chat con el coach (`phase2_in_progress`),
+  informe de 11 bloques (`phase2_completed`), pantalla final (`closed`).
+  Token inválido o inexistente → 404.
+
+## Paso 7 — smoke test end-to-end
+
+El script `scripts/fase1-to-fase2-compare.ts` atraviesa el flujo real
+completo (create → form → phase1/\* → phase2/\* → close) con los 3
+fixtures simulados (`daniel`, `carmen`, `tomas`). No verifica calidad
+del output del LLM: sólo confirma que el flujo no rompe y que las
+transiciones de estado son correctas.
+
+```bash
+SESSION_CREATE_SECRET=... COACH_BASE_URL=https://... \
+  npm run e2e:compare
+```
+
+Cada fixture crea una sesión real. Inspeccionar resultado con
+`npm run db:studio` — cada sesión debe acabar en `status='closed'`, con
+16 filas en `phase1_responses`, un `phase1_handoff`, N filas en
+`phase2_turns`, un `phase2_state` y un `final_reports`.
 
 ## Stack
 

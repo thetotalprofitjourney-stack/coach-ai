@@ -96,11 +96,18 @@ model Phase2Turn {
 }
 
 model Phase2State {
-  sessionId          String   @id @map("session_id") @db.Uuid
-  currentLevel       Int      @default(1) @map("current_level")
-  hypothesesExplored String[] @map("hypotheses_explored")
-  runningSummary     String   @default("") @map("running_summary")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  sessionId                String   @id @map("session_id") @db.Uuid
+  currentLevel             Int      @default(1) @map("current_level")
+  hypothesesExplored       String[] @default([]) @map("hypotheses_explored")
+  runningSummary           String   @default("") @map("running_summary")
+  // Términos subjetivos del hand-off ya desambiguados durante Fase 2.
+  // El auxiliar (§4.3) los va acumulando turno a turno. Derivar pending
+  // desde `handoff.terminos_subjetivos` - resolved no es suficiente porque
+  // el usuario puede introducir términos nuevos durante la conversación,
+  // por eso también persistimos `subjectiveTermsPending`.
+  subjectiveTermsResolved  String[] @default([]) @map("subjective_terms_resolved")
+  subjectiveTermsPending   String[] @default([]) @map("subjective_terms_pending")
+  updatedAt                DateTime @updatedAt @map("updated_at")
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
