@@ -245,12 +245,22 @@ container.
 
 ```bash
 cd ~/coach-ai
-docker compose -f docker-compose.prod.yml build
+docker compose --env-file .env.production -f docker-compose.prod.yml build
 ```
 
 La primera vez tarda 2-5 minutos. Cachea `node_modules` contra
 `package-lock.json`; deploys posteriores sin cambio de deps bajan a
 <1 minuto.
+
+> **Importante — `--env-file`**. Las variables `NEXT_PUBLIC_*` y
+> `APP_PUBLIC_URL` se **inlinean en el bundle cliente** durante
+> `next build`. El `env_file` declarado en el servicio del
+> `docker-compose.prod.yml` sólo se aplica en runtime; para que lleguen
+> al build hay que pasar `--env-file .env.production` al comando
+> `docker compose ... build`. Los `up -d`, `down`, `logs`, `run`, `ps`
+> no lo requieren: leen del `env_file` del servicio. Si se olvida
+> `--env-file` en el build, la landing saldrá con precio "—" y sin
+> vídeo, aunque `.env.production` tenga los valores correctos.
 
 Verificar tamaño final:
 
@@ -336,7 +346,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 # Rebuild tras git pull
 git pull
-docker compose -f docker-compose.prod.yml build
+docker compose --env-file .env.production -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 
 # Seguir logs en vivo
@@ -619,7 +629,7 @@ Recargar el container con la config nueva:
 ```bash
 cd ~/coach-ai
 docker compose -f docker-compose.prod.yml down
-docker compose -f docker-compose.prod.yml build --no-cache
+docker compose --env-file .env.production -f docker-compose.prod.yml build --no-cache
 docker compose -f docker-compose.prod.yml up -d
 ```
 
@@ -654,7 +664,7 @@ Validación rápida del webhook con el dashboard:
 
 ```bash
 docker compose -f docker-compose.prod.yml down
-docker compose -f docker-compose.prod.yml build --no-cache
+docker compose --env-file .env.production -f docker-compose.prod.yml build --no-cache
 docker compose -f docker-compose.prod.yml up -d
 ```
 
@@ -771,7 +781,7 @@ Recordatorio:
 
 ```bash
 docker compose -f docker-compose.prod.yml down
-docker compose -f docker-compose.prod.yml build --no-cache
+docker compose --env-file .env.production -f docker-compose.prod.yml build --no-cache
 docker compose -f docker-compose.prod.yml up -d
 ```
 
@@ -940,7 +950,7 @@ comportamiento del coach distinto, etc.):
 cd ~/coach-ai
 git log --oneline -10        # identificar el commit previo estable
 git checkout <sha-anterior>
-docker compose -f docker-compose.prod.yml build
+docker compose --env-file .env.production -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d
 ```
 

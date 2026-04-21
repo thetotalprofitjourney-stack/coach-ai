@@ -45,9 +45,11 @@ placeholder: hero + "Qué es" / "Cómo funciona" / "Qué obtienes" /
 vídeo / precio con dos CTA "Empezar mi sesión" que invocan el endpoint
 público `POST /api/checkout/create` del Paso 10 y redirigen a la URL
 hosted de Stripe. Nueva `/privacidad` con la política del §6.4. Copy
-y política redactados en español con placeholders del operador
-(contacto, razón social, URL del vídeo, importe mostrado). Dos env
-vars nuevas: `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` (precio visible al
+y política redactados en español; los datos del responsable del
+tratamiento (razón social, NIF, contacto) quedan cableados
+literalmente en el Paso 13. La URL del vídeo y el importe mostrado
+siguen siendo env vars. Dos env vars nuevas:
+`NEXT_PUBLIC_SESSION_PRICE_DISPLAY` (precio visible al
 usuario, que el operador mantiene coherente con `STRIPE_PRICE_ID`) y
 `NEXT_PUBLIC_PROMO_VIDEO_URL` (embed YouTube/Vimeo opcional, fallback
 a placeholder sobrio "Vídeo próximamente"). Ver la sección "Paso 11 —
