@@ -5,6 +5,8 @@ export type ApiErrorCode =
   | 'UNAUTHORIZED'
   | 'SESSION_NOT_FOUND'
   | 'INVALID_STATE'
+  | 'SESSION_CLOSED'
+  | 'REPORT_NOT_FOUND'
   | 'INTERNAL';
 
 export interface ApiErrorBody {
