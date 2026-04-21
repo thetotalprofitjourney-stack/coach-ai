@@ -38,3 +38,31 @@ export type HandoffFixture = {
   label: string;
   handoff: Handoff;
 };
+
+export type TurnRole = 'coach' | 'user';
+
+export type Turn = {
+  role: TurnRole;
+  content: string;
+  // Número de la pregunta del coach a la que pertenece el turno. La pregunta
+  // del coach y la respuesta inmediata del usuario comparten turnNumber.
+  turnNumber: number;
+};
+
+export type RunState = {
+  runId: string;
+  fixtureSlug: string;
+  handoff: Handoff;
+  turns: Turn[];
+  // Contador de preguntas del coach ya emitidas (0 antes del primer turno).
+  coachTurnNumber: number;
+  runningSummary: string;
+  hypothesesExplored: string[];
+  hypothesesPending: string[];
+  subjectiveTermsResolved: string[];
+  subjectiveTermsPending: string[];
+  estimatedLevel: number; // 1..6
+  closed: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
