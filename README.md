@@ -6,11 +6,13 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
-Paso 4 — integración con el SDK de Anthropic y prompt caching. Hay un
-endpoint interno que el operador puede golpear para verificar que la clave
-funciona y que la caché acierta en la segunda llamada. Sin chat todavía, sin
-prompts reales de Fase 1 ni Fase 2 — esos llegan en los Pasos 5 y 6. Ver el
-orden de construcción en `docs/proyecto-completo.md` §7.1.
+Paso 5 — Fase 2 en modo validación aislada. El coach conversacional (Opus
+4.7 + extended thinking) corre contra hand-offs hardcodeados, con la IA
+auxiliar (Haiku 4.5) refrescando el estado estructurado tras cada turno y
+las inyecciones progresivas de cierre (`[[QUEDAN 10 PREGUNTAS]]`,
+`[[QUEDAN 5 PREGUNTAS]]`, `[[CIERRA YA]]`) activas. Sin chat UI todavía
+(llega en el Paso 7) ni Fase 1 real (Paso 6). Orden de construcción en
+`docs/proyecto-completo.md` §7.1.
 
 Endpoints activos:
 
@@ -22,6 +24,11 @@ Endpoints activos:
   Hace una llamada real al SDK de Anthropic con prompt caching y devuelve
   la respuesta, las métricas de `usage` y la latencia. Reutiliza el mismo
   header `X-Session-Create-Secret`. No se invoca desde el frontend.
+- `POST /api/dev/coach/run` — arranca una run de validación aislada del
+  coach con un hand-off fixture. Devuelve `runId` y el primer turno del
+  coach. Mismo header de operador.
+- `POST /api/dev/coach/{runId}/turn` — envía una respuesta del usuario,
+  corre la auxiliar, el coach responde y devuelve todo junto al operador.
 
 Rutas activas:
 
@@ -184,6 +191,77 @@ Errores esperados:
 | Sin header `X-Session-Create-Secret` | 401 `UNAUTHORIZED` |
 | `ANTHROPIC_API_KEY` ausente/inválida | 500 `INTERNAL` |
 | Body con `model` fuera del enum | 400 `INVALID_INPUT` |
+| Rate limit de Anthropic | 503 `INTERNAL` |
+
+## Paso 5 — smoke test del coach en validación aislada
+
+Pensado para ejecutarse en producción una vez la clave esté desplegada
+(el Paso 5 se prueba en caliente por el operador; no hay test humano en
+dev). Requisitos:
+
+- `SESSION_CREATE_SECRET` configurado en el entorno del servidor.
+- `ANTHROPIC_API_KEY` configurado en el entorno del servidor.
+- Tiempo de respuesta: el coach usa extended thinking (budget alto). Una
+  llamada de `turn` encadena auxiliar + coach y puede tardar 45-90 s. El
+  hosting debe permitir respuestas largas; las rutas declaran
+  `maxDuration = 300` para cubrirlo.
+
+Fixtures de hand-off disponibles (slugs):
+
+| Slug | Perfil | Dilema |
+| --- | --- | --- |
+| `daniel` | D-C (dominancia + análisis) | Montar consultoría propia tras 12 años en una empresa |
+| `carmen` | S-D (estabilidad + dominancia matizada) | Jubilación y qué hacer con la empresa familiar |
+| `tomas` | I-D (influencia + dominancia tardía) | Mudanza familiar a Zúrich por oferta laboral |
+
+Flujo:
+
+```bash
+SECRET="$(grep ^SESSION_CREATE_SECRET .env | cut -d= -f2- | tr -d '"')"
+HOST="http://localhost:3000"   # o la URL de producción
+
+# 1. Arrancar una run con un fixture. Devuelve { runId, coachMessage, ... }
+curl -sS -X POST "$HOST/api/dev/coach/run" \
+  -H "X-Session-Create-Secret: $SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"fixtureSlug":"daniel"}' | tee /tmp/coach-run.json
+
+RUN_ID=$(jq -r .runId /tmp/coach-run.json)
+jq -r .coachMessage /tmp/coach-run.json
+
+# 2. Responder como usuario. Encadena auxiliar (Haiku) + coach (Opus).
+curl -sS -X POST "$HOST/api/dev/coach/$RUN_ID/turn" \
+  -H "X-Session-Create-Secret: $SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"userMessage":"Quiero dedicarme a mi propio proyecto y dejar la empresa."}' \
+  | jq '{turnNumber, coachMessage, state: .state | {estimatedLevel, hypothesesExplored, hypothesesPending, runningSummary}}'
+
+# 3. Repetir el paso 2 tantas veces como haga falta. El estado mutable vive
+#    en memoria del proceso (Map<runId, RunState>) — si el servidor
+#    reinicia, la run se pierde. Es deliberado para este paso.
+```
+
+Qué inspeccionar en cada respuesta:
+
+- `turnNumber` — contador de preguntas del coach (1..50). En 40, 45 y 50
+  la aplicación inyecta los comandos progresivos de cierre.
+- `state.estimatedLevel` — nivel 1-6 que estima la auxiliar según §5.3.
+- `state.hypothesesExplored` / `hypothesesPending` — la auxiliar mueve
+  ids del hand-off de pending a explored cuando el coach las toca.
+- `state.runningSummary` — resumen estructurado en palabras del usuario.
+- `coach.usage` — comprueba que `cacheReadInputTokens` sube en la segunda
+  llamada y siguientes (prompt + hand-off cacheados por run).
+
+Errores esperados:
+
+| Caso | Respuesta |
+| --- | --- |
+| Sin header `X-Session-Create-Secret` | 401 `UNAUTHORIZED` |
+| `fixtureSlug` fuera del enum | 400 `INVALID_INPUT` |
+| `runId` inexistente en `POST /turn` | 404 `SESSION_NOT_FOUND` |
+| `userMessage` vacío | 400 `INVALID_INPUT` |
+| Llamar a `/turn` cuando el último turno fue del usuario | 409 `INVALID_STATE` |
+| Run cerrada | 409 `INVALID_STATE` |
 | Rate limit de Anthropic | 503 `INTERNAL` |
 
 ## Documentación del producto
