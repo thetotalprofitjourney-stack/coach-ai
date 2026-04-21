@@ -792,3 +792,247 @@ falla, rollback (§15).
 
 Ya es seguro comunicar la URL a usuarios. El resto del Paso 13
 (§13-§15) es régimen permanente del operador.
+
+---
+
+## §13 Backup de PostgreSQL
+
+El TTL de las sesiones es 24-48 h (cron del §8 + §6.3 de la spec),
+así que el riesgo de pérdida de datos de sesión es acotado. El valor
+que hay que proteger es:
+
+- El **schema completo** con todas las migraciones (ya versionado en
+  `prisma/migrations/`, recuperable con `prisma migrate deploy`).
+- La **tabla `_prisma_migrations`** (estado aplicado).
+- Cualquier sesión en curso en el momento del backup (no crítico: el
+  usuario puede relanzar una sesión nueva, es el modelo del producto).
+
+### §13.1 `pg_dump` diario con retención 14 días
+
+Script ejemplo `/usr/local/bin/coach-ai-backup.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+BACKUP_DIR=/var/backups/coach-ai
+DB=coach_ai_prod
+USER=coach_app
+RETAIN_DAYS=14
+
+mkdir -p "${BACKUP_DIR}"
+chmod 700 "${BACKUP_DIR}"
+
+ts="$(date -u +%Y%m%dT%H%M%SZ)"
+file="${BACKUP_DIR}/dump-${ts}.sql.gz"
+
+# PGPASSWORD se toma de /etc/coach-ai-cron.env (añadir la línea
+# PGPASSWORD=<...> al fichero del §8.1).
+source /etc/coach-ai-cron.env
+
+PGPASSWORD="${PGPASSWORD}" pg_dump \
+  -h 127.0.0.1 -U "${USER}" -d "${DB}" \
+  --no-owner --no-acl --format=plain | gzip -9 > "${file}"
+
+# Rotación
+find "${BACKUP_DIR}" -name 'dump-*.sql.gz' -mtime +${RETAIN_DAYS} -delete
+
+logger -t coach-ai-backup "ok ${file} ($(du -h ${file} | cut -f1))"
+```
+
+Entrada adicional en `/etc/cron.d/coach-ai-cleanup` (o nuevo fichero):
+
+```
+# Backup diario a las 02:30 UTC, media hora tras el cleanup nocturno.
+30 2 * * * root /usr/local/bin/coach-ai-backup.sh
+```
+
+### §13.2 Restore
+
+Procedimiento a ojo, para testear una vez tras el primer backup:
+
+```bash
+gunzip -c /var/backups/coach-ai/dump-<ts>.sql.gz | \
+  sudo -iu postgres psql coach_ai_prod_restore
+```
+
+Siempre restaurar a una DB **distinta** (`coach_ai_prod_restore`)
+para comparar sin sobrescribir la de prod. Si hace falta, tras
+validar, hacer swap por tabla con `pg_restore` o copiando manualmente.
+
+### §13.3 Copia fuera del servidor (opcional recomendado)
+
+`rsync` nocturno a un bucket S3-compat (Backblaze B2, Wasabi) o a
+otro servidor del operador. Sin esto, un fallo de disco pierde los
+backups. Fuera del alcance duro del Paso 13, pero es el siguiente
+paso lógico.
+
+---
+
+## §14 Observabilidad operativa
+
+La spec §7.3 pide métricas agregadas sin PII. No se añade nada nuevo
+en el Paso 13: los logs estructurados que ya emiten el cron y el
+webhook (desde los Pasos 9 y 10) cubren el MVP.
+
+### §14.1 Dónde están los logs
+
+- **App**: `docker compose -f docker-compose.prod.yml logs -f app`.
+  Cada endpoint emite una línea JSON por evento relevante:
+  - `event=cron_cleanup` — ejecución del borrado nocturno (cuando
+    se dispara vía HTTP; el script del §8 lo captura también con
+    `logger -t coach-ai-cleanup`).
+  - `event=stripe_webhook` — recepción del webhook de Stripe con
+    `outcome` (`ignored` / `idempotent` / `created`), `eventId` y
+    `durationMs`. **Sin PII**: ni email ni nombre fiscal.
+- **Crontab del host**: `journalctl -t coach-ai-cleanup` y
+  `journalctl -t coach-ai-backup`. Mostrar la última semana con
+  `journalctl -t coach-ai-cleanup --since '7 days ago'`.
+- **Nginx**: `/var/log/nginx/access.log` y `/var/log/nginx/error.log`.
+  El access.log tiene IP + User-Agent; si el operador quiere
+  anonimizar, configurar `log_format` con `$remote_addr` hasheado o
+  simplemente `'-'`.
+
+### §14.2 Rotación de logs de Docker
+
+Por defecto Docker no rota los logs del container y pueden llenar
+disco. Config en `/etc/docker/daemon.json`:
+
+```json
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "20m",
+    "max-file": "5"
+  }
+}
+```
+
+Aplicar con `sudo systemctl restart docker` (reinicia también el
+container — hacerlo en mantenimiento, no en tráfico).
+
+### §14.3 Indicadores mínimos a vigilar
+
+Sin herramienta dedicada de APM, el operador puede revisar a mano:
+
+- `journalctl -t coach-ai-cleanup` una vez al día para ver que el
+  cron corre y los contadores son sensatos.
+- `docker stats coach-ai` puntualmente para RAM/CPU del container.
+- `sudo -iu postgres psql coach_ai_prod -c 'SELECT count(*) FROM sessions;'`
+  para ver el volumen acumulado (debería quedarse bajo).
+
+Sentry, Plausible, PostHog, etc. quedan fuera del MVP (§8). Si se
+añaden después, no toca prompts ni schema: se integran en el
+frontend o como middleware.
+
+---
+
+## §15 Rollback
+
+Dos escenarios, dos procedimientos.
+
+### §15.1 Rollback del deploy de app (código)
+
+Si tras un `docker compose build && up -d` algo va mal (5xx,
+comportamiento del coach distinto, etc.):
+
+```bash
+cd ~/coach-ai
+git log --oneline -10        # identificar el commit previo estable
+git checkout <sha-anterior>
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Si se deployó por tags (`v1.0.0 → v1.0.1` con fallo), volver al tag
+anterior con `git checkout v1.0.0`.
+
+Tiempo estimado: 2-5 minutos. El usuario que esté a medias en una
+sesión pierde el turno en curso pero el estado en BD se preserva
+(las migraciones no cambiaron).
+
+### §15.2 Rollback del schema
+
+**Regla dura**: Prisma no ofrece migrate down automático. Si una
+migración introdujo un cambio dañino:
+
+1. **No aplicar más migraciones** hasta resolver.
+2. Si la migración aún no está en producción, borrar la carpeta en
+   `prisma/migrations/<timestamp>_<nombre>/` y recrearla corregida.
+3. Si ya está en producción: escribir una **nueva** migración que
+   revierta el cambio (`ALTER TABLE ... DROP COLUMN`, etc.) y
+   aplicarla con `db:migrate:deploy`.
+4. Restaurar del backup del §13 sólo en caso de corrupción
+   irrecuperable.
+
+En la práctica, con el Paso 13 recién salido, todas las tablas
+existentes están estables desde los Pasos 1, 6, 8 y 9. Cualquier
+cambio futuro debería pensarse con este rollback en mente.
+
+### §15.3 Rollback de Stripe live → test
+
+Si tras el §9.2 hay fallo grave:
+
+1. En el dashboard de Stripe, **desactivar** el webhook live (no
+   borrar — sólo pausar). Esto detiene la creación de sesiones al
+   instante.
+2. Revertir `.env.production` a los valores de test del §9.1.
+3. Rebuild + up.
+4. Avisar al usuario final a través del canal que proceda (la app
+   sigue funcionando con test; los pagos reales quedan en pausa).
+
+Los pagos ya cobrados en live se pueden reembolsar desde el propio
+dashboard si hiciera falta.
+
+---
+
+## Apéndice A — Comandos de diagnóstico rápido
+
+```bash
+# Estado general
+docker compose -f docker-compose.prod.yml ps
+sudo systemctl status nginx postgresql
+
+# Logs en vivo
+docker compose -f docker-compose.prod.yml logs -f app
+sudo tail -f /var/log/nginx/error.log
+journalctl -t coach-ai-cleanup -f
+
+# Conexión a la DB
+sudo -iu postgres psql coach_ai_prod
+\dt                                           # listar tablas
+SELECT status, count(*) FROM sessions GROUP BY status;
+
+# Estado del container
+docker stats coach-ai
+docker inspect coach-ai --format '{{.State.Health.Status}}'
+
+# Probar el webhook de Stripe manualmente
+curl -sSI https://<dominio>/api/stripe/webhook   # 405 (solo POST)
+
+# Canary completo
+COACH_BASE_URL=https://<dominio> npm run healthcheck
+```
+
+## Apéndice B — Plan B si no se usa Docker
+
+El runbook asume Docker + Compose, pero el repo es autocontenido y
+puede correr directamente con Node 20+ en el host:
+
+```bash
+cd ~/coach-ai
+npm ci
+npm run build
+DATABASE_URL=... APP_PUBLIC_URL=... ANTHROPIC_API_KEY=... \
+CRON_SECRET=... SESSION_CREATE_SECRET=... STRIPE_SECRET_KEY=... \
+STRIPE_WEBHOOK_SECRET=... STRIPE_PRICE_ID=... \
+NEXT_PUBLIC_SESSION_PRICE_DISPLAY=... \
+node .next/standalone/server.js
+```
+
+Para mantenerlo como servicio, unit de systemd apuntando al comando
+anterior. El resto del runbook (Nginx, SSL, cron, backup, rollback,
+Stripe, DNS) se aplica igual. La única pérdida es la inmutabilidad
+de la imagen — los rollbacks dependen más del `git checkout` y el
+`npm run build` que de `docker compose build`.
+
