@@ -6,22 +6,20 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
-Paso 8 — materialización del informe final como PDF y DOCX descargables
-y ciclo de vida de la sesión tras la descarga. En el estado
-`phase2_completed` la pantalla `/session/{token}` muestra el informe
-con dos botones primarios ("Descargar PDF" / "Descargar Word") además
-del "Cerrar sesión" explícito (ahora secundario). Los dos entregables
-se renderizan bajo demanda (pdfkit para PDF, docx para DOCX) con
-portada (nombre + fecha), 11 bloques con los títulos de §5.4 y pie
-sobrio "Informe generado por Coach AI — DD/MM/YYYY". La primera
-descarga marca `FinalReport.downloadedAt` de forma idempotente y
-arranca un temporizador client-side de 10 min (§2.6): transcurrido el
-plazo o al pulsar el botón, la sesión transita a `closed`. Si el
-usuario recarga la página dentro de esa ventana, el timer se reanuda
-con el remanente calculado desde `downloadedAt`. Intento de descarga
-con `status='closed'` → 410 `SESSION_CLOSED`. Paso 9 (cron nocturno)
-queda fuera; los ficheros no se persisten, sólo se regeneran al vuelo
-desde `FinalReport.reportContent`.
+Paso 9 — cron nocturno de borrado (§6.3). Vercel Cron invoca
+`GET /api/cron/cleanup` cada día a las 02:00 UTC (03:00 CET / 04:00
+CEST, dentro de la ventana 3:00-5:00 hora local). La ruta está
+protegida con `Authorization: Bearer $CRON_SECRET` y hace hard delete
+en dos pasos atómicos ($transaction): sesiones en `closed` y
+sesiones abandonadas (`created_at < NOW() - 24h` y `status != 'closed'`).
+La fila en `sessions` arrastra en cascada el resto. Soporta
+`?dryRun=1` para simular sin efectos. Cada ejecución emite un log
+JSON estructurado con `event=cron_cleanup` y contadores, sin PII
+(§7.3). El operador tiene además `npm run cron:cleanup[:dry]` como
+fallback. El hook `deleteReportBlobs` está listo para cuando los
+PDF/DOCX se persistan en Vercel Blob/S3; hoy `FinalReport.pdfPath` y
+`FinalReport.docxPath` siguen a `null` porque el Paso 8 renderiza
+bajo demanda, así que el contador de blobs es 0.
 
 Endpoints activos:
 
