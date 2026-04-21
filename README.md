@@ -6,6 +6,22 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
+Paso 13 — Producción (§7.1 paso 13). Cierre del MVP: el repo queda
+listo para desplegar sobre el stack estándar del operador (Ubuntu
+24.04 + Docker + PostgreSQL en host + Nginx con SSL). El deploy en sí,
+el registro del webhook en Stripe live, la ejecución de la rúbrica del
+Paso 12 contra staging y el cutover de DNS los ejecuta el operador
+siguiendo [`docs/paso-13-deploy.md`](./docs/paso-13-deploy.md); la
+sesión de Claude no tiene acceso a Vercel/Stripe/DNS y no los realiza.
+Cambios en código: `next.config.ts` con `output: 'standalone'`,
+`Dockerfile` multi-stage, `docker-compose.prod.yml` con
+`network_mode: host`, metadata completa + favicon SVG + `not-found` +
+`error` + `robots.ts` en la app, `scripts/healthcheck.ts` como canary
+post-deploy, datos del operador cableados en
+`src/app/privacidad/page.tsx` (Total Profit Journey, S.L., NIF
+B19344555, `info@totalprofitjourney.com`). Ver la sección "Paso 13 —
+Producción" al final de este README.
+
 Paso 12 — Testing end-to-end con los seis perfiles (§7.1 y §7.2).
 Última fase de validación antes del Paso 13 (producción). Amplía los
 fixtures de Fase 1 de 3 a los 6 slugs piloto (`daniel`, `carmen`,
@@ -29,9 +45,11 @@ placeholder: hero + "Qué es" / "Cómo funciona" / "Qué obtienes" /
 vídeo / precio con dos CTA "Empezar mi sesión" que invocan el endpoint
 público `POST /api/checkout/create` del Paso 10 y redirigen a la URL
 hosted de Stripe. Nueva `/privacidad` con la política del §6.4. Copy
-y política redactados en español con placeholders del operador
-(contacto, razón social, URL del vídeo, importe mostrado). Dos env
-vars nuevas: `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` (precio visible al
+y política redactados en español; los datos del responsable del
+tratamiento (razón social, NIF, contacto) quedan cableados
+literalmente en el Paso 13. La URL del vídeo y el importe mostrado
+siguen siendo env vars. Dos env vars nuevas:
+`NEXT_PUBLIC_SESSION_PRICE_DISPLAY` (precio visible al
 usuario, que el operador mantiene coherente con `STRIPE_PRICE_ID`) y
 `NEXT_PUBLIC_PROMO_VIDEO_URL` (embed YouTube/Vimeo opcional, fallback
 a placeholder sobrio "Vídeo próximamente"). Ver la sección "Paso 11 —
@@ -47,7 +65,8 @@ columna que vincule pago y sesión: el lazo vive sólo en Stripe.
 Ver la sección "Paso 10 — Stripe" al final de este README para
 configurar, probar y diagnosticar.
 
-Paso 9 — cron nocturno de borrado (§6.3). Vercel Cron invoca
+Paso 9 — cron nocturno de borrado (§6.3). En producción el crontab
+del host (Ubuntu, ver `docs/paso-13-deploy.md` §8) invoca
 `GET /api/cron/cleanup` cada día a las 02:00 UTC (03:00 CET / 04:00
 CEST, dentro de la ventana 3:00-5:00 hora local). La ruta está
 protegida con `Authorization: Bearer $CRON_SECRET` y hace hard delete
@@ -223,7 +242,10 @@ La app estará disponible en `http://localhost:3000`.
 | `npm run db:studio` | Abre Prisma Studio |
 | `npm run db:reset` | Borra la DB y rehace migraciones (sólo dev) |
 | `npm run db:seed` | Ejecuta `prisma/seed.ts` (no-op en el Paso 1) |
-| `npm run fase1:compare` | Corre los 3 fixtures simulados de Fase 1 contra los endpoints dev y escribe los hand-offs generados en `src/fixtures/handoffs-generados/` |
+| `npm run fase1:compare` | Corre los 6 fixtures piloto de Fase 1 contra los endpoints dev y escribe los hand-offs generados en `src/fixtures/handoffs-generados/`. Admite `--slug` |
+| `npm run e2e:compare` | Flujo completo `create → form → phase1 → phase2 → close` con los 6 slugs contra los endpoints productivos, persiste transcripciones en `src/fixtures/transcripts-generados/`. Admite `--slug` |
+| `npm run cron:cleanup` / `cron:cleanup:dry` | Fallback del operador al cron nocturno: ejecuta el borrado directamente contra `DATABASE_URL`, con `--dry-run` sólo cuenta |
+| `npm run healthcheck` | Canary post-deploy (Paso 13): GET a las rutas públicas contra `$COACH_BASE_URL` y `exit 1` ante la primera que no devuelva 200 |
 
 ## Estructura
 
@@ -542,11 +564,13 @@ por `onDelete: Cascade`. El hook `deleteReportBlobs` iteraría los
 `pdfPath`/`docxPath` asociados; hoy son siempre `null` (Paso 8
 renderiza on-demand), así que el contador de blobs es 0.
 
-**Schedule.** `vercel.json` declara el cron como `0 2 * * *` UTC, que
-equivale a 03:00 CET (invierno) / 04:00 CEST (verano) — dentro de la
-ventana 3:00-5:00 hora local que pide §6.3 todo el año. Vercel Cron
-es GET y añade `Authorization: Bearer $CRON_SECRET` si la env var
-está configurada.
+**Schedule.** Un `/etc/cron.d/coach-ai-cleanup` en el host invoca a
+las `0 2 * * *` UTC el script wrapper `/usr/local/bin/coach-ai-cleanup.sh`,
+que hace `curl` a `/api/cron/cleanup` en loopback con el header
+`Authorization: Bearer $CRON_SECRET`. 02:00 UTC equivale a 03:00 CET
+(invierno) / 04:00 CEST (verano), dentro de la ventana 3:00-5:00 hora
+local que pide §6.3 todo el año. Detalles completos del setup en
+`docs/paso-13-deploy.md` §8.
 
 **Invocación manual (curl).** Útil para validar en producción:
 
@@ -867,6 +891,51 @@ de producción.
 **Fuera de alcance.** Deploy real, registro del webhook en el
 dashboard de Stripe, env vars de live, propagación del dominio. Todo
 eso es el Paso 13.
+
+## Paso 13 — Producción
+
+Cierre del MVP (§7.1 paso 13). El repo queda **listo para deploy**; el
+deploy en sí lo ejecuta el operador siguiendo el runbook completo en
+[`docs/paso-13-deploy.md`](./docs/paso-13-deploy.md).
+
+**Qué añade este paso al código.**
+
+- `next.config.ts` con `output: 'standalone'` para que Docker sirva
+  sólo el runtime mínimo.
+- `Dockerfile` multi-stage (deps → builder → runner) y `.dockerignore`.
+  Imagen final ~300-400 MB con Prisma CLI incluida para poder ejecutar
+  `db:migrate:deploy` desde un container efímero.
+- `docker-compose.prod.yml` con `network_mode: host` (Postgres en el
+  propio host, no en compose) y healthcheck contra `/robots.txt`.
+- Metadata completa en `src/app/layout.tsx` (OG básico, locale es_ES,
+  `metadataBase` derivada de `APP_PUBLIC_URL`), favicon SVG sobrio
+  (`src/app/icon.svg`), página 404 (`not-found.tsx`), error boundary
+  raíz (`error.tsx`) y `robots.ts` permisivo sobre `/` y `/privacidad`.
+- `scripts/healthcheck.ts` como canary post-deploy: GET a las rutas
+  públicas, `exit 1` a la primera que no responda 200.
+- Datos del operador cableados en `src/app/privacidad/page.tsx` (Total
+  Profit Journey, S.L., NIF B19344555, `info@totalprofitjourney.com`).
+
+**Qué NO añade.** Ni analytics, ni Sentry, ni tests automatizados con
+oráculos sobre la salida del LLM, ni CMS, ni multi-idioma, ni Open
+Graph con imágenes dinámicas — todo fuera del alcance del MVP (§8).
+
+**Gate go/no-go.** Parte inseparable del runbook. Antes del cutover a
+Stripe live y DNS final, el operador ejecuta sobre staging la rúbrica
+de [`docs/paso-12-rubrica.md`](./docs/paso-12-rubrica.md): los 6 slugs
+deben pasar §1/§2/§4/§5 y la sesión autoadministrada §3.2 debe
+cumplirse. Sin go, no hay cutover.
+
+**Precondiciones del operador.** Servidor Ubuntu 24.04 con Docker,
+Docker Compose, Nginx y PostgreSQL 16 en el host; dominio con acceso a
+DNS; cuentas de Stripe (test + live) y Anthropic con crédito
+suficiente; acceso root/sudo. Lista completa en
+`docs/paso-13-deploy.md` §0.
+
+**Variables de entorno en `.env.production`.** El runbook §3.2
+incluye la checklist con la tabla "nombre · obligatoria · secreto · de
+dónde sale" y separa `NEXT_PUBLIC_*` (inline en el bundle, cualquier
+cambio requiere rebuild).
 
 ## Documentación del producto
 

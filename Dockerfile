@@ -22,6 +22,20 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache libc6-compat openssl
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Variables que Next congela en build-time: las `NEXT_PUBLIC_*` se
+# inlinean en el bundle cliente y `APP_PUBLIC_URL` alimenta
+# `metadataBase` de las rutas estáticas prerrenderizadas (p. ej. `/`).
+# Cualquier cambio en estos valores exige rebuild de la imagen; runtime
+# env var no las modifica. Se reciben como ARG desde docker compose y se
+# promueven a ENV para que `next build` las vea.
+ARG NEXT_PUBLIC_SESSION_PRICE_DISPLAY
+ARG NEXT_PUBLIC_PROMO_VIDEO_URL
+ARG APP_PUBLIC_URL
+ENV NEXT_PUBLIC_SESSION_PRICE_DISPLAY=$NEXT_PUBLIC_SESSION_PRICE_DISPLAY
+ENV NEXT_PUBLIC_PROMO_VIDEO_URL=$NEXT_PUBLIC_PROMO_VIDEO_URL
+ENV APP_PUBLIC_URL=$APP_PUBLIC_URL
+
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
