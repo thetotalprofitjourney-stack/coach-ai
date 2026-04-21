@@ -6,6 +6,16 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
+Paso 10 — Stripe e integración de pago (§2.2 y §3.1). Puente único
+entre el sistema de facturación y el sistema de sesión: al
+completarse la Checkout Session, el webhook crea la fila en
+`sessions` con un UUID v4 y lo escribe en `metadata.session_token`
+de la Checkout Session; `/pay/success` lo resuelve vía polling y
+redirige a `/session/{token}`. Dentro de la app no existe ninguna
+columna que vincule pago y sesión: el lazo vive sólo en Stripe.
+Ver la sección "Paso 10 — Stripe" al final de este README para
+configurar, probar y diagnosticar.
+
 Paso 9 — cron nocturno de borrado (§6.3). Vercel Cron invoca
 `GET /api/cron/cleanup` cada día a las 02:00 UTC (03:00 CET / 04:00
 CEST, dentro de la ventana 3:00-5:00 hora local). La ruta está
@@ -23,8 +33,21 @@ bajo demanda, así que el contador de blobs es 0.
 
 Endpoints activos:
 
-- `POST /api/session/create` — crea una sesión anónima (UUID v4) en estado
-  `created`. Protegido con el header `X-Session-Create-Secret`.
+- `POST /api/checkout/create` — crea una Stripe Checkout Session en modo
+  `payment` y devuelve `{ url }`. Sin auth (la consumirán la landing
+  del Paso 11 y curl del operador).
+- `POST /api/stripe/webhook` — verifica firma HMAC con
+  `STRIPE_WEBHOOK_SECRET`, actúa sólo sobre
+  `checkout.session.completed`, crea la fila en `sessions` vía
+  `createSessionRow()` y escribe el UUID en `metadata.session_token`
+  de la Checkout Session. Idempotente por metadata.
+- `GET /api/checkout/resolve?cs={id}` — consumido por `/pay/success`.
+  200 `{ token }`, 202 `{ pending: true }`, 400 no `paid`, 404 `cs`
+  inexistente.
+- `POST /api/session/create` — wrapper HTTP delgado sobre
+  `createSessionRow()`. Protegido con `X-Session-Create-Secret`;
+  mantenido como fallback del operador y por los smoke tests. El
+  camino productivo es el webhook.
 - `POST /api/session/{token}/form` — recibe el formulario inicial (§2.3),
   valida con Zod, guarda los datos y transiciona a `phase1_in_progress`.
 - `POST /api/session/{token}/phase1/start` — devuelve el primer mensaje
@@ -73,6 +96,11 @@ Endpoints activos:
 
 Rutas activas:
 
+- `GET /pay/success?cs={id}` — aterrizaje post-pago. Client Component
+  que hace polling contra `/api/checkout/resolve` hasta obtener el
+  token y redirigir a `/session/{token}`.
+- `GET /pay/cancelled` — pantalla estática de pago cancelado, con
+  botón "Volver al inicio".
 - `GET /session/{token}` — pantalla pública anónima. Pinta el componente
   correspondiente al `Session.status`: formulario inicial (`created`),
   chat con el administrador DISC (`phase1_in_progress`), transición con
@@ -521,6 +549,104 @@ Errores esperados:
 | Header no coincide con `CRON_SECRET` | 401 `UNAUTHORIZED` |
 | `CRON_SECRET` no configurado en el servidor | 500 `INTERNAL` |
 | Fallo de DB durante el `deleteMany` | 500 `INTERNAL` (la transacción aborta, no hay borrado parcial) |
+
+## Paso 10 — Stripe e integración de pago
+
+Implementa §2.2 y §3.1. El único puente entre el sistema de
+facturación (Stripe) y el sistema de sesión (la app) es la Checkout
+Session: al confirmarse el pago, el webhook crea la fila en
+`sessions`, escribe el UUID en `metadata.session_token` de la
+Checkout Session y el frontend lo resuelve para abrir
+`/session/{token}`. Dentro de la app no hay ninguna columna que
+relacione un pago con una sesión (§3.1: "la información de unión
+vive sólo en Stripe").
+
+**Variables de entorno.** Además de las anteriores:
+
+- `STRIPE_SECRET_KEY` — clave del operador (test/live según entorno).
+- `STRIPE_WEBHOOK_SECRET` — `whsec_...` que devuelve el dashboard al
+  registrar el endpoint del webhook, o `stripe listen` en dev.
+- `STRIPE_PRICE_ID` — `price_...` del único line item (modo `payment`).
+- `APP_PUBLIC_URL` — obligatoria. Usada para construir las URLs de
+  `success_url`/`cancel_url` de la Checkout Session y la URL que
+  devuelve `/api/session/create`.
+
+**Endpoints nuevos.**
+
+- `POST /api/checkout/create` — crea una Stripe Checkout Session hosted
+  y devuelve `{ url }`. Sin auth: lo consumirá la landing pública
+  (Paso 11) y un curl del operador. `mode: 'payment'` (§8: una sesión
+  = un pago), sin códigos promocionales.
+- `POST /api/stripe/webhook` — endpoint de Stripe. Valida la firma con
+  `STRIPE_WEBHOOK_SECRET`, actúa sólo sobre
+  `checkout.session.completed`, idempotencia por
+  `metadata.session_token`. Llama a `createSessionRow()` en proceso
+  (no self-HTTP) y escribe el token de vuelta en la Checkout Session.
+- `GET /api/checkout/resolve?cs={id}` — usado por `/pay/success` para
+  obtener el token. 200 `{ token }`, 202 `{ pending: true }`, 400 si
+  no `paid`, 404 si `cs` no existe en Stripe.
+
+**Páginas nuevas.**
+
+- `/pay/success?cs=…` — Client Component con polling (1 s × 30
+  intentos) contra `/api/checkout/resolve`; al resolver, redirige a
+  `/session/{token}`.
+- `/pay/cancelled` — estática. Botón "Volver al inicio".
+
+**Desarrollo local con `stripe listen`.**
+
+```bash
+# 1. Autenticar la CLI (sólo la primera vez):
+stripe login
+
+# 2. Reenviar eventos al endpoint local. La CLI imprime un
+#    `whsec_...` que debes copiar en STRIPE_WEBHOOK_SECRET.
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+
+# 3. En otra terminal, disparar un evento sin pagar de verdad:
+stripe trigger checkout.session.completed
+```
+
+**Pruebas humanas (sólo en producción, como los Pasos 4–9).** El
+operador registra el endpoint en el dashboard de Stripe, configura
+las env vars en Vercel y ejecuta el flujo end-to-end primero con
+`stripe listen` + `stripe trigger`, y luego con una compra real
+usando tarjetas test:
+
+| Número | Efecto |
+| --- | --- |
+| `4242 4242 4242 4242` | Pago correcto. |
+| `4000 0025 0000 3155` | Requiere 3D Secure. |
+| `4000 0000 0000 0002` | Rechazo (generic decline). |
+
+CVC cualquiera, fecha futura, código postal cualquiera.
+
+**Criterios de cierre.**
+
+- `curl -X POST $HOST/api/checkout/create` devuelve `{ url }` válida.
+- `stripe trigger checkout.session.completed` → webhook responde 200,
+  crea fila en `sessions` con UUID v4, y
+  `stripe.checkout.sessions.retrieve` muestra
+  `metadata.session_token` con ese UUID.
+- Disparar el mismo evento repetido → NO crea una segunda fila
+  (idempotencia por metadata).
+- Webhook sin firma válida → 400.
+- `GET /api/checkout/resolve?cs=<paid>` → `{ token }` post-webhook;
+  `{ pending: true }` (202) antes.
+- `/pay/success?cs=<id>` redirige a `/session/{token}` tras el polling.
+- `/pay/cancelled` se renderiza.
+
+**Diagnóstico.**
+
+- Logs en Vercel → endpoint `/api/stripe/webhook` emite una línea JSON
+  por evento con `event='stripe_webhook'`, `eventId`, `outcome`
+  (`ignored`/`idempotent`/`created`), `sessionToken` y `durationMs`.
+  Sin PII del pago (ni email ni nombre fiscal).
+- Dashboard de Stripe → "Developers" → "Events" para ver el payload
+  completo y reintentar manualmente si hizo falta.
+- Errores de firma (400) en los logs indican desalineamiento entre el
+  `whsec_` del listener / dashboard y `STRIPE_WEBHOOK_SECRET` del
+  servidor.
 
 ## Documentación del producto
 
