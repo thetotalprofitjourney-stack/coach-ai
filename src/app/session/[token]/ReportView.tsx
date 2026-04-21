@@ -28,10 +28,22 @@ const BLOCK_TITLES: Record<ReportBlockKey, string> = {
 export function ReportView({
   token,
   report,
+  userName,
+  createdAt,
+  initialDownloadedAt,
 }: {
   token: string;
   report: FinalReportContent;
+  userName: string | null;
+  createdAt: string;
+  initialDownloadedAt: string | null;
 }) {
+  // userName / createdAt / initialDownloadedAt se consumen en los
+  // botones de descarga y el timer de cierre (C2/C3 del Paso 8).
+  void userName;
+  void createdAt;
+  void initialDownloadedAt;
+
   const router = useRouter();
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
