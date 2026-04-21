@@ -6,6 +6,19 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
+Paso 11 — Landing pública (§2.1 y §6.4). La home `/` deja de ser
+placeholder: hero + "Qué es" / "Cómo funciona" / "Qué obtienes" /
+vídeo / precio con dos CTA "Empezar mi sesión" que invocan el endpoint
+público `POST /api/checkout/create` del Paso 10 y redirigen a la URL
+hosted de Stripe. Nueva `/privacidad` con la política del §6.4. Copy
+y política redactados en español con placeholders del operador
+(contacto, razón social, URL del vídeo, importe mostrado). Dos env
+vars nuevas: `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` (precio visible al
+usuario, que el operador mantiene coherente con `STRIPE_PRICE_ID`) y
+`NEXT_PUBLIC_PROMO_VIDEO_URL` (embed YouTube/Vimeo opcional, fallback
+a placeholder sobrio "Vídeo próximamente"). Ver la sección "Paso 11 —
+Landing pública" al final de este README.
+
 Paso 10 — Stripe e integración de pago (§2.2 y §3.1). Puente único
 entre el sistema de facturación y el sistema de sesión: al
 completarse la Checkout Session, el webhook crea la fila en
@@ -96,6 +109,15 @@ Endpoints activos:
 
 Rutas activas:
 
+- `GET /` — landing pública (§2.1). Server Component estático con las
+  secciones del doc (hero, "qué es", "cómo funciona", "qué obtienes",
+  vídeo, precio) y dos instancias del BuyButton. El precio y la URL
+  del vídeo se leen desde env públicas; cada CTA dispara
+  `POST /api/checkout/create` y redirige a la URL hosted de Stripe.
+- `GET /privacidad` — política de privacidad pública (§6.4). Server
+  Component estático. Contiene placeholders `[nombre del operador]`
+  y `[contacto@operador.es]` que el operador sustituye antes de
+  producción.
 - `GET /pay/success?cs={id}` — aterrizaje post-pago. Client Component
   que hace polling contra `/api/checkout/resolve` hasta obtener el
   token y redirigir a `/session/{token}`.
