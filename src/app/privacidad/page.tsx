@@ -7,9 +7,10 @@ export const metadata: Metadata = {
     'Modelo de anonimato, retención de datos y derechos RGPD de Coach AI.',
 };
 
-// Política de privacidad (§6.4). Texto breve redactado en JSX; el operador
-// sustituye [nombre del operador] y [contacto@operador.es] antes de
-// producción (TODOs visibles en README).
+// Política de privacidad (§6.4). Texto breve redactado en JSX con los datos
+// del operador (razón social, NIF y contacto) cableados literalmente. Si
+// cambia el operador, esos datos se tocan aquí y en los metadatos del
+// layout; no hay configuración en runtime.
 export default function PrivacyPage() {
   return (
     <div className="flex min-h-screen flex-col">
@@ -119,8 +120,8 @@ export default function PrivacyPage() {
             6. Responsable del tratamiento y base legal
           </h2>
           <p className="text-base leading-relaxed text-neutral-700">
-            El responsable del tratamiento es [nombre del operador]. La
-            base legal del tratamiento es la ejecución del servicio
+            El responsable del tratamiento es Total Profit Journey, S.L.,
+            con NIF B19344555. La base legal del tratamiento es la ejecución del servicio
             contratado por ti (art. 6.1.b del Reglamento General de
             Protección de Datos). Los datos fiscales se tratan, además,
             por obligación legal (art. 6.1.c RGPD) a efectos de
@@ -154,7 +155,14 @@ export default function PrivacyPage() {
           <h2 className="text-xl font-semibold tracking-tight">8. Contacto</h2>
           <p className="text-base leading-relaxed text-neutral-700">
             Para cualquier cuestión relacionada con esta política o con el
-            tratamiento de tus datos, escribe a [contacto@operador.es].
+            tratamiento de tus datos, escribe a{' '}
+            <a
+              href="mailto:info@totalprofitjourney.com"
+              className="underline-offset-4 hover:underline"
+            >
+              info@totalprofitjourney.com
+            </a>
+            .
           </p>
         </section>
       </main>

@@ -133,9 +133,9 @@ Rutas activas:
   del vídeo se leen desde env públicas; cada CTA dispara
   `POST /api/checkout/create` y redirige a la URL hosted de Stripe.
 - `GET /privacidad` — política de privacidad pública (§6.4). Server
-  Component estático. Contiene placeholders `[nombre del operador]`
-  y `[contacto@operador.es]` que el operador sustituye antes de
-  producción.
+  Component estático. Datos del responsable cableados literalmente
+  (Total Profit Journey, S.L., NIF B19344555, contacto
+  `info@totalprofitjourney.com`).
 - `GET /pay/success?cs={id}` — aterrizaje post-pago. Client Component
   que hace polling contra `/api/checkout/resolve` hasta obtener el
   token y redirigir a `/session/{token}`.
@@ -731,18 +731,17 @@ declararlas en el entorno del build.
   Si queda vacía, la sección "Vídeo" se renderiza como un cuadro gris
   con el texto "Vídeo próximamente".
 
-**TODO del operador antes de producción.**
+**Datos del operador cableados.** En el Paso 13 se fijaron en
+`src/app/privacidad/page.tsx` los datos del responsable del
+tratamiento: Total Profit Journey, S.L., NIF B19344555, contacto
+`info@totalprofitjourney.com`. La redacción de la cláusula del
+subencargado externo de modelos de lenguaje se mantiene genérica
+("proveedor externo de modelos de lenguaje") por decisión explícita;
+si en el futuro interesa citar a Anthropic por nombre y enlazar al
+DPA, se edita ahí directamente.
 
-- [ ] En `src/app/privacidad/page.tsx`, sustituir `[nombre del
-      operador]` por la razón social (o nombre comercial) del
-      responsable del tratamiento.
-- [ ] En `src/app/privacidad/page.tsx`, sustituir
-      `[contacto@operador.es]` por la dirección de correo electrónico
-      real de soporte y privacidad.
-- [ ] Decidir si el subencargado externo de modelos de lenguaje debe
-      citarse por nombre (Anthropic) y añadir el enlace al contrato
-      DPA correspondiente; la redacción actual utiliza la fórmula
-      genérica "proveedor externo de modelos de lenguaje".
+**TODO del operador en cada deploy.**
+
 - [ ] Configurar `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` con el mismo
       importe que el Price activo en Stripe.
 - [ ] Configurar `NEXT_PUBLIC_PROMO_VIDEO_URL` con el embed del vídeo
