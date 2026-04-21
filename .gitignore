@@ -25,3 +25,7 @@ next-env.d.ts
 .idea/
 
 # NOTE: prisma/migrations/ is intentionally NOT ignored — it is the source of truth.
+
+# Hand-offs generados por scripts/fase1-compare.ts. No determinísticos,
+# se regeneran en cada ejecución para inspección manual.
+src/fixtures/handoffs-generados/
