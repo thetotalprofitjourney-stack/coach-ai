@@ -186,3 +186,159 @@ el pool interno de Prisma es suficiente. Si en el futuro aparece
 `too many connections`, añadir **PgBouncer** en modo `transaction` en
 el mismo host y apuntar `DATABASE_URL` a su puerto (6432). No forma
 parte del Paso 13.
+
+---
+
+## §3 Preparación del proyecto en el servidor
+
+Todo lo que sigue se ejecuta como el usuario `coach`.
+
+### §3.1 Clonar el repo
+
+```bash
+cd ~
+git clone https://github.com/thetotalprofitjourney-stack/coach-ai.git
+cd coach-ai
+git checkout main   # o el tag de release que corresponda
+```
+
+Se recomienda desplegar siempre desde un tag firmado (p. ej.
+`v1.0.0`). El `git log --oneline -5` debe mostrar el commit exacto que
+el operador quiere en producción.
+
+### §3.2 `.env.production` en el host
+
+El fichero vive en `~coach/coach-ai/.env.production`. **No se
+versiona** (`.gitignore` lo cubre). Lo carga Docker Compose mediante
+`env_file` y se inyecta al container.
+
+Plantilla inicial (copiar, editar, guardar con permisos 600):
+
+```bash
+cd ~/coach-ai
+cp .env.example .env.production
+chmod 600 .env.production
+```
+
+Checklist de variables, con el origen de cada valor:
+
+| Variable | Obligatoria | Secreto | De dónde sale |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | sí | sí | `postgresql://coach_app:<PASSWORD>@127.0.0.1:5432/coach_ai_prod?schema=public` del §2 |
+| `APP_PUBLIC_URL` | sí | no | Dominio público con `https://`, sin trailing slash. Ej. `https://coach.totalprofitjourney.com` |
+| `ANTHROPIC_API_KEY` | sí | sí | Anthropic Console → API keys |
+| `SESSION_CREATE_SECRET` | sí | sí | `openssl rand -hex 32`. Se reutiliza como secreto del operador para `/api/dev/*` y smoke tests |
+| `CRON_SECRET` | sí | sí | `openssl rand -hex 32`. Referenciado por el crontab del §8 |
+| `STRIPE_SECRET_KEY` | sí | sí | Stripe dashboard → API keys. **Test mode** en staging, **live mode** en cutover |
+| `STRIPE_WEBHOOK_SECRET` | sí | sí | Stripe dashboard → Webhooks → endpoint → Signing secret. `whsec_...` |
+| `STRIPE_PRICE_ID` | sí | no | Stripe dashboard → Products → Price ID. `price_...`. Test en staging, live en cutover |
+| `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` | sí | no | String libre con el precio a mostrar. Ej. `"149 €"`. **Inline en el bundle** (cualquier cambio requiere rebuild) |
+| `NEXT_PUBLIC_PROMO_VIDEO_URL` | no | no | URL embed del vídeo promocional. Si está vacía, la landing muestra placeholder sobrio. **Inline en el bundle** |
+| `ALLOW_UNAUTHENTICATED_SESSION_CREATE` | no | no | **NO definir en prod**. Solo existe para desarrollo local |
+
+Variables marcadas como "Inline en el bundle" (`NEXT_PUBLIC_*`) se
+congelan en **tiempo de build**: cualquier cambio requiere `docker
+compose build --no-cache` y reinicio, no basta con reiniciar el
+container.
+
+### §3.3 Construcción de la imagen
+
+```bash
+cd ~/coach-ai
+docker compose -f docker-compose.prod.yml build
+```
+
+La primera vez tarda 2-5 minutos. Cachea `node_modules` contra
+`package-lock.json`; deploys posteriores sin cambio de deps bajan a
+<1 minuto.
+
+Verificar tamaño final:
+
+```bash
+docker images coach-ai:latest
+# Esperable: 300-400 MB (standalone + Prisma CLI + engines)
+```
+
+---
+
+## §4 Migración del schema
+
+Antes de subir el container, aplicar el schema completo contra la base
+de datos vacía creada en §2. Prisma detecta las migraciones existentes
+en `prisma/migrations/` y las ejecuta en orden.
+
+```bash
+cd ~/coach-ai
+docker compose -f docker-compose.prod.yml run --rm app npm run db:migrate:deploy
+```
+
+El comando debe terminar con `X migrations applied`. Si hay errores:
+
+- `Can't reach database server`: `DATABASE_URL` mal construida o
+  Postgres no escucha en `127.0.0.1` (revisar §2.3).
+- `Authentication failed`: password incorrecto en `DATABASE_URL`.
+- `permission denied for schema public`: el owner de la DB no es
+  `coach_app` (revisar el `CREATE DATABASE ... OWNER` del §2.2).
+
+**Regla dura**: en producción se usa `prisma migrate deploy`, nunca
+`prisma migrate dev` ni `prisma db push`. Ambos pueden destruir datos
+sin aviso.
+
+Validar el schema aplicado:
+
+```bash
+sudo -iu postgres psql coach_ai_prod -c '\dt'
+# Debe listar: sessions, phase1_responses, phase1_handoff,
+# phase2_turns, phase2_state, final_reports, _prisma_migrations.
+```
+
+---
+
+## §5 Primer arranque del container (aún sin proxy)
+
+### §5.1 Levantar el servicio
+
+```bash
+cd ~/coach-ai
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml ps
+```
+
+`STATUS` debe mostrar `Up (healthy)` tras ~20 segundos (el healthcheck
+del container ya hace `curl` a `/robots.txt` cada 30s).
+
+### §5.2 Probar la app desde el propio host
+
+El container escucha en `127.0.0.1:3000`. Probar:
+
+```bash
+curl -sSI http://127.0.0.1:3000/robots.txt        # 200
+curl -sSI http://127.0.0.1:3000/                  # 200
+curl -sSI http://127.0.0.1:3000/privacidad        # 200
+```
+
+Si cualquiera devuelve 5xx o no conecta, revisar logs:
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f app
+```
+
+### §5.3 Salir y volver
+
+Comandos de ciclo de vida recurrentes:
+
+```bash
+# Parar
+docker compose -f docker-compose.prod.yml down
+
+# Arrancar
+docker compose -f docker-compose.prod.yml up -d
+
+# Rebuild tras git pull
+git pull
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+
+# Seguir logs en vivo
+docker compose -f docker-compose.prod.yml logs -f app
+```
