@@ -1,0 +1,43 @@
+# docker-compose de producción — Paso 13.
+#
+# Topología asumida: Ubuntu host con Docker y Docker Compose instalados,
+# PostgreSQL corriendo en el propio host (no en contenedor) y un reverse
+# proxy (nginx + certbot) delante terminando HTTPS y proxyeando al
+# puerto 3000. Ver `docs/paso-13-deploy.md` para el runbook completo.
+#
+# `network_mode: host` elimina la capa de NAT y permite al container
+# hablar con Postgres en 127.0.0.1:5432 sin reglas especiales. En Linux
+# es el camino más simple; si por alguna razón se necesita aislamiento
+# de red, cambiar a bridge + `extra_hosts: ["host.docker.internal:host-gateway"]`
+# y publicar el puerto 3000 con `ports: ["127.0.0.1:3000:3000"]`.
+#
+# Migraciones (un shot, antes del up):
+#   docker compose -f docker-compose.prod.yml run --rm app npm run db:migrate:deploy
+#
+# Arranque:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Logs:
+#   docker compose -f docker-compose.prod.yml logs -f app
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: coach-ai:latest
+    container_name: coach-ai
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "127.0.0.1"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/robots.txt"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
