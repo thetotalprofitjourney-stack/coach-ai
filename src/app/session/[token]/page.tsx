@@ -6,7 +6,9 @@ import { Phase1Chat } from './Phase1Chat';
 import { Phase1Placeholder } from './Phase1Placeholder';
 import { Phase2Bootstrap } from './Phase2Bootstrap';
 import { Phase2Chat } from './Phase2Chat';
+import { ReportView } from './ReportView';
 import { ClosedScreen } from './ClosedScreen';
+import type { FinalReportContent } from '@/lib/fase2/parse-report';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,8 +59,15 @@ export default async function SessionPage({
         />
       );
     }
-    case 'phase2_completed':
-      return <Phase1Placeholder />;
+    case 'phase2_completed': {
+      const reportRow = await prisma.finalReport.findUnique({
+        where: { sessionId: tokenParse.data },
+        select: { reportContent: true },
+      });
+      if (!reportRow) return <Phase1Placeholder />;
+      const report = reportRow.reportContent as unknown as FinalReportContent;
+      return <ReportView token={tokenParse.data} report={report} />;
+    }
     case 'closed':
       return <ClosedScreen />;
   }
