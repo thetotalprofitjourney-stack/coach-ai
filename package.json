@@ -22,7 +22,8 @@
     "fase1:compare": "tsx scripts/fase1-compare.ts",
     "e2e:compare": "tsx scripts/fase1-to-fase2-compare.ts",
     "cron:cleanup": "tsx scripts/cron-cleanup.ts",
-    "cron:cleanup:dry": "tsx scripts/cron-cleanup.ts --dry-run"
+    "cron:cleanup:dry": "tsx scripts/cron-cleanup.ts --dry-run",
+    "healthcheck": "tsx scripts/healthcheck.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
