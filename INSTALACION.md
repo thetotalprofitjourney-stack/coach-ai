@@ -1,0 +1,242 @@
+# Instalación de Coach AI
+
+Guía consolidada para el equipo técnico del operador. El runbook
+completo con el detalle operativo está en
+[`docs/paso-13-deploy.md`](./docs/paso-13-deploy.md); este documento
+remite a él por sección para lo que requiere profundidad.
+
+## 1. Requisitos técnicos
+
+- **Hardware mínimo**: 2 vCPU, 2 GB RAM, 20 GB disco.
+- **SO**: Ubuntu 24.04 LTS (kernel >= 6.8).
+- **Red**: IP pública con 80/443 abiertos; 22 restringido a IP operador o VPN.
+- **Acceso**: usuario con `sudo`/root al servidor.
+- **Cuenta Stripe** con claves **test** y **live**.
+- **Cuenta Anthropic** con crédito para Opus 4.7, Sonnet 4.6 y Haiku 4.5.
+- **Dominio** del operador con acceso al panel DNS.
+- **Acceso al repo** `thetotalprofitjourney-stack/coach-ai` (deploy key SSH o HTTPS + token).
+
+## 2. Variables de entorno
+
+Destino: `~coach/coach-ai/.env.production` con `chmod 600`. No se
+versiona. Origen de cada valor en `docs/paso-13-deploy.md` §3.
+
+| Nombre | Descripción | De dónde sale | Ejemplo | Secreto |
+| --- | --- | --- | --- | --- |
+| `DATABASE_URL` | Postgres del host vía loopback. | Password generado en §3.2. | `postgresql://coach_app:PASS@127.0.0.1:5432/coach_ai_prod?schema=public` | sí |
+| `APP_PUBLIC_URL` | URL pública `https://`, sin trailing slash. `metadataBase` + URLs de Checkout. | Dominio del operador. | `https://coach.totalprofitjourney.com` | no |
+| `ANTHROPIC_API_KEY` | Clave del SDK Anthropic. Server-only. | Anthropic Console -> API keys. | `sk-ant-...` | sí |
+| `SESSION_CREATE_SECRET` | Protege `POST /api/session/create` y `/api/dev/*`. | `openssl rand -hex 32`. | `a1b2...` | sí |
+| `CRON_SECRET` | Protege `GET /api/cron/cleanup`. Lo usa el crontab del host. | `openssl rand -hex 32`. | `9f8e...` | sí |
+| `STRIPE_SECRET_KEY` | Clave secreta Stripe (test en staging, live en cutover). | Stripe -> API keys. | `sk_test_...` / `sk_live_...` | sí |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret del endpoint. Distinto test/live. | Stripe -> Webhooks -> endpoint. | `whsec_...` | sí |
+| `STRIPE_PRICE_ID` | Price de la Checkout Session (modo `payment`). | Stripe -> Products. | `price_...` | no |
+| `NEXT_PUBLIC_SESSION_PRICE_DISPLAY` | Precio visible en landing. Debe casar con `STRIPE_PRICE_ID`. **Inline en bundle** (rebuild). | String libre. | `"149 €"` | no |
+| `NEXT_PUBLIC_PROMO_VIDEO_URL` | URL embed YouTube/Vimeo. Vacía => placeholder. **Inline en bundle**. | URL embed. | `https://www.youtube.com/embed/XXXX` | no |
+
+`ALLOW_UNAUTHENTICATED_SESSION_CREATE` **NO debe definirse en
+producción** — sólo para desarrollo local. Las variables **Inline en
+bundle** (`NEXT_PUBLIC_*` y `APP_PUBLIC_URL`) se congelan en `next
+build`: cualquier cambio exige rebuild, no basta con reiniciar el
+container.
+
+## 3. Instalación paso a paso
+
+### 3.1 Preparación del servidor
+
+Como root. Detalle (repo Docker, llaves) en
+`docs/paso-13-deploy.md` §1.
+
+```bash
+apt update && apt upgrade -y
+apt install -y ca-certificates curl gnupg lsb-release ufw fail2ban nginx
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable
+adduser --disabled-password --gecos '' coach
+# Docker Engine + Compose plugin (repo oficial, claves en /etc/apt/keyrings/docker.gpg)
+apt update && apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+usermod -aG docker coach && systemctl enable --now docker nginx
+```
+
+### 3.2 PostgreSQL 16 en el host
+
+Detalle en `docs/paso-13-deploy.md` §2. Mantener `listen_addresses =
+'localhost'` (default); no exponer al exterior.
+
+```bash
+sudo apt install -y postgresql-16
+sudo -iu postgres psql <<SQL
+CREATE USER coach_app WITH PASSWORD '<PASSWORD_GENERADO>';
+CREATE DATABASE coach_ai_prod OWNER coach_app ENCODING 'UTF8' LC_COLLATE='C' LC_CTYPE='C' TEMPLATE template0;
+GRANT ALL PRIVILEGES ON DATABASE coach_ai_prod TO coach_app;
+ALTER ROLE coach_app SET timezone TO 'UTC';
+SQL
+```
+
+En `/etc/postgresql/16/main/pg_hba.conf`, `scram-sha-256` sobre loopback:
+
+```
+host    coach_ai_prod   coach_app   127.0.0.1/32    scram-sha-256
+host    coach_ai_prod   coach_app   ::1/128         scram-sha-256
+```
+
+`sudo systemctl restart postgresql`. Validar con `psql postgresql://coach_app:<PASS>@127.0.0.1:5432/coach_ai_prod -c '\l'`.
+
+### 3.3 Clonar repo y `.env.production`
+
+Como usuario `coach`. Detalle en `docs/paso-13-deploy.md` §3.1-§3.2.
+
+```bash
+cd ~ && git clone https://github.com/thetotalprofitjourney-stack/coach-ai.git
+cd coach-ai && git checkout main
+cp .env.example .env.production && chmod 600 .env.production  # editar con los valores de §2
+```
+
+### 3.4 Build de la imagen Docker
+
+Detalle en `docs/paso-13-deploy.md` §3.3.
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml build
+```
+
+**Crítico**: `--env-file` es obligatorio en el `build`. `NEXT_PUBLIC_*`
+y `APP_PUBLIC_URL` se inlinean en `next build`; el `env_file` del
+servicio sólo actúa en runtime. Sin él, la landing sale con precio
+`—` y sin vídeo aunque el fichero esté bien.
+
+### 3.5 Migración del schema
+
+Detalle en `docs/paso-13-deploy.md` §4.
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm app npm run db:migrate:deploy
+```
+
+Debe terminar con `X migrations applied`. Validar con `sudo -iu
+postgres psql coach_ai_prod -c '\dt'`. Regla dura: en prod **sólo**
+`prisma migrate deploy`.
+
+### 3.6 Arranque del container
+
+Detalle en `docs/paso-13-deploy.md` §5.
+
+```bash
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml ps    # STATUS: Up (healthy)
+curl -sSI http://127.0.0.1:3000/robots.txt      # 200
+```
+
+### 3.7 Nginx reverse proxy
+
+Vhost con bloque HTTP -> HTTPS (301) + bloque HTTPS con `proxy_pass
+http://127.0.0.1:3000`, headers `Host`, `X-Forwarded-For`,
+`X-Forwarded-Proto`, `client_max_body_size 5m` y `proxy_buffering off`.
+**Timeouts 310 s obligatorios** (`proxy_read_timeout` y
+`proxy_send_timeout`) porque las rutas de síntesis de Fase 1 y turnos
+de Fase 2 con extended thinking declaran `maxDuration=300`; con el
+default de 60 s se cortan a medio turno. Vhost inicial (ACME) y final
+literal en `docs/paso-13-deploy.md` §6. Recargar con `sudo nginx -t &&
+sudo systemctl reload nginx`.
+
+### 3.8 SSL con certbot
+
+Detalle en `docs/paso-13-deploy.md` §7.
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d <dominio> --email <email> --agree-tos --no-eff-email --redirect
+sudo certbot renew --dry-run
+```
+
+### 3.9 Cron del host para el borrado nocturno
+
+Reemplaza Vercel Cron: crontab del sistema hace `curl` a
+`/api/cron/cleanup` cada 02:00 UTC (ventana 3-5 hora local). Script y
+cron literales en `docs/paso-13-deploy.md` §8.
+
+```bash
+# Secreto root-only fuera del crontab
+sudo install -m 0600 /dev/null /etc/coach-ai-cron.env
+echo "CRON_SECRET=<mismo valor que .env.production>" | sudo tee -a /etc/coach-ai-cron.env
+# /usr/local/bin/coach-ai-cleanup.sh (curl con Authorization: Bearer $CRON_SECRET) con chmod +x
+# /etc/cron.d/coach-ai-cleanup: 0 2 * * * root /usr/local/bin/coach-ai-cleanup.sh (chmod 644)
+sudo /usr/local/bin/coach-ai-cleanup.sh && journalctl -t coach-ai-cleanup --since '5 minutes ago'
+```
+
+### 3.10 Stripe: webhook
+
+Orden operativo en `docs/paso-13-deploy.md` §9. Configurar **primero
+en test mode** (staging) y, tras el gate go/no-go del runbook §11,
+replicar en **live mode**. Pasos en el dashboard:
+
+1. Product + Price -> copiar `price_...` a `STRIPE_PRICE_ID`.
+2. API keys -> Secret key -> `STRIPE_SECRET_KEY`.
+3. Webhooks -> Add endpoint:
+   - URL: `https://<dominio>/api/stripe/webhook`.
+   - Events: **únicamente** `checkout.session.completed` (la ruta ignora el resto).
+   - Copiar Signing secret `whsec_...` a `STRIPE_WEBHOOK_SECRET`.
+
+Tras tocar `NEXT_PUBLIC_*` o `APP_PUBLIC_URL`: `docker compose down && build --no-cache && up -d`.
+
+## 4. Smoke tests post-deploy
+
+- **Healthcheck**: `COACH_BASE_URL=https://<dominio> npm run healthcheck`.
+- **Ping Anthropic** (valida clave + prompt caching):
+  ```bash
+  curl -sS -X POST https://<dominio>/api/dev/anthropic-ping \
+    -H "X-Session-Create-Secret: $SECRET" -H 'Content-Type: application/json' \
+    -d '{"model":"haiku"}' | jq '.usage'
+  ```
+- **Webhook Stripe (staging)**: dashboard -> Webhooks -> endpoint ->
+  "Send test webhook" con `checkout.session.completed` -> **200** en <1 s;
+  `docker compose logs app` muestra `event='stripe_webhook'`.
+- **Creación de sesión real**: landing -> CTA -> tarjeta test
+  `4242 4242 4242 4242` (CVC y fecha futura cualesquiera). `/pay/success`
+  debe redirigir a `/session/{token}`.
+- **E2E contra staging** (sesión `closed` con `final_reports` relleno;
+  inspeccionar con `npm run db:studio`):
+  ```bash
+  SESSION_CREATE_SECRET=... COACH_BASE_URL=https://<dominio> \
+    npm run e2e:compare -- --slug daniel
+  ```
+  Flujo de los 6 slugs y rúbrica go/no-go en `docs/paso-13-deploy.md`
+  §10-§11 y `docs/paso-12-rubrica.md`.
+
+## 5. Rollback y troubleshooting básico
+
+### 5.1 Rollback del deploy (código)
+
+Detalle en `docs/paso-13-deploy.md` §15.1. Tiempo: 2-5 min. Las
+sesiones en curso pierden el turno actual; el estado en BD se preserva.
+
+```bash
+cd ~/coach-ai && git log --oneline -10
+git checkout <sha-anterior>         # o tag previo
+docker compose --env-file .env.production -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### 5.2 Rollback del schema
+
+Prisma **no ofrece `migrate down`**. Nunca editar una migración ya
+aplicada en prod. Para revertir, escribir una **nueva** migración
+correctiva (`ALTER TABLE ... DROP COLUMN`, etc.) y aplicarla con
+`db:migrate:deploy`. Restaurar del `pg_dump` diario
+(`docs/paso-13-deploy.md` §13) sólo en corrupción irrecuperable.
+
+### 5.3 Troubleshooting mínimo
+
+| Síntoma | Causa probable | Dónde mirar |
+| --- | --- | --- |
+| 502 Bad Gateway | Container no arriba o unhealthy. | `docker compose ps`, `logs -f app`. |
+| 504 Gateway Timeout | Timeouts Nginx <310 s. | `proxy_read_timeout` del vhost; `nginx -t && reload`. |
+| Webhook Stripe 400 | Signing secret desalineado. | Dashboard endpoint vs `STRIPE_WEBHOOK_SECRET`. |
+| `Can't reach database server` | `DATABASE_URL` o `pg_hba.conf`. | §3.2; `systemctl status postgresql`. |
+| Landing con "—" o sin vídeo | `NEXT_PUBLIC_*` no inlineadas (falta `--env-file` en build). | Rebuild con `--env-file` y `--no-cache`. |
+| Cron no ejecuta | Wrapper sin `+x` o `CRON_SECRET` desalineado. | `journalctl -t coach-ai-cleanup --since '2 days ago'`. |
+
+## 6. Referencia completa
+
+Para detalles operativos (backups `pg_dump`, rotación de logs Docker,
+cutover DNS, canary con 1 €, Stripe live), seguir el runbook completo
+en [`docs/paso-13-deploy.md`](./docs/paso-13-deploy.md).
