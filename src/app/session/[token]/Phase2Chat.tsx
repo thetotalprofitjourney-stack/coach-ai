@@ -4,15 +4,33 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { consumeCoachStream } from '@/lib/api/coach-stream-client';
+import { useInputDraft } from '@/lib/client/use-input-draft';
+import { useOnlineStatus } from '@/lib/client/use-online-status';
+import { OfflineBanner } from './OfflineBanner';
+import { SupportTicket } from './SupportTicket';
 
-type ChatTurn = { role: 'coach' | 'user'; content: string; turnNumber: number };
+type ChatTurn = {
+  role: 'coach' | 'user';
+  content: string;
+  turnNumber: number;
+  // Último turno del usuario cuyo envío al coach falló; queda esperando
+  // reintento. Se renderiza con opacidad reducida.
+  pending?: boolean;
+};
 
 type Status =
   | { kind: 'ready' }
   | { kind: 'sending' }
   | { kind: 'streaming' }
   | { kind: 'closing' }
-  | { kind: 'error'; message: string };
+  | {
+      kind: 'error';
+      message: string;
+      technical?: string;
+    };
+
+// Tras 30 s en error, aparece el botón para generar ticket de soporte.
+const SUPPORT_THRESHOLD_MS = 30_000;
 
 export interface Phase2ChatProps {
   token: string;
@@ -28,11 +46,14 @@ export function Phase2Chat({
   initialLevel,
 }: Phase2ChatProps) {
   const router = useRouter();
+  const online = useOnlineStatus();
   const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
   const [coachTurnNumber, setCoachTurnNumber] = useState(initialCoachTurnNumber);
   const [level, setLevel] = useState(initialLevel);
-  const [input, setInput] = useState('');
+  const inputDraft = useInputDraft(`${token}:phase2-input`);
   const [status, setStatus] = useState<Status>({ kind: 'ready' });
+  const [errorSince, setErrorSince] = useState<number | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,40 +63,64 @@ export function Phase2Chat({
     });
   }, [turns]);
 
-  const send = async () => {
-    const trimmed = input.trim();
-    if (!trimmed || status.kind !== 'ready') return;
+  useEffect(() => {
+    if (errorSince === null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [errorSince]);
+
+  const markError = (message: string, technical?: string) => {
+    setStatus({ kind: 'error', message, technical });
+    setErrorSince((prev) => prev ?? Date.now());
+  };
+
+  const clearError = () => {
+    setErrorSince(null);
+  };
+
+  // `doSend` encapsula la llamada al endpoint de turno. Si `text` ya
+  // está como turno pending en `turns`, no lo re-agregamos (reintento);
+  // si es un envío nuevo, lo añadimos con pending=true y limpiamos el
+  // borrador del input. El flag pending se quita cuando el stream del
+  // coach acaba con éxito; si falla, sigue visible para mostrar los
+  // botones de retry/discard.
+  const doSend = async (text: string, isRetry: boolean) => {
     const userTurnNumber = coachTurnNumber;
     const streamingCoachTurnNumber = coachTurnNumber + 1;
-    setTurns((t) => [
-      ...t,
-      { role: 'user', content: trimmed, turnNumber: userTurnNumber },
-    ]);
-    setInput('');
+
+    if (!isRetry) {
+      setTurns((t) => [
+        ...t,
+        {
+          role: 'user',
+          content: text,
+          turnNumber: userTurnNumber,
+          pending: true,
+        },
+      ]);
+      inputDraft.clear();
+    }
     setStatus({ kind: 'sending' });
+    clearError();
 
     try {
       const res = await fetch(`/api/session/${token}/phase2/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: trimmed }),
+        body: JSON.stringify({ userMessage: text }),
       });
       if (!res.ok) {
         if (res.status === 409) {
           router.refresh();
           return;
         }
-        setStatus({
-          kind: 'error',
-          message: 'No se pudo enviar tu respuesta.',
-        });
+        markError(
+          'No se pudo enviar tu respuesta.',
+          `phase2/message → HTTP ${res.status}`,
+        );
         return;
       }
 
-      // El primer delta será quien inserte el turno streaming del coach;
-      // así el usuario sigue viendo "Pensando…" durante el auxiliar y la
-      // latencia hasta el primer token, y en cuanto Opus empieza a emitir
-      // el UI cambia a modo streaming.
       let coachPlaceholderInserted = false;
       let streamingContent = '';
 
@@ -117,11 +162,17 @@ export function Phase2Chat({
             typeof event.estimatedLevel === 'number'
               ? event.estimatedLevel
               : level;
-          // Normaliza el contenido final (trim) y fija el turnNumber
-          // autoritativo del servidor, que puede discrepar del placeholder
-          // si hubiera una race condition (409 del server ya lo cubre).
           setTurns((t) => {
             const next = [...t];
+            // Quita pending del último user turn (el que acabamos de
+            // confirmar) y arregla el turno del coach con el turnNumber
+            // autoritativo del servidor.
+            for (let i = next.length - 1; i >= 0; i--) {
+              if (next[i].role === 'user' && next[i].pending) {
+                next[i] = { ...next[i], pending: false };
+                break;
+              }
+            }
             const last = next[next.length - 1];
             if (
               last &&
@@ -139,10 +190,9 @@ export function Phase2Chat({
           setCoachTurnNumber(turnNumber);
           setLevel(estimatedLevel);
         },
-        onError: ({ message }) => {
-          // Descarta el turno parcial del coach para que el usuario pueda
-          // reintentar con el input intacto (que ya limpiamos arriba — se
-          // puede mejorar, pero no empeora el comportamiento actual).
+        onError: ({ message, code }) => {
+          // Descarta el turno parcial del coach; el turno del usuario
+          // sigue como pending para permitir reintento sin re-añadirlo.
           setTurns((t) =>
             t.filter(
               (turn) =>
@@ -152,39 +202,74 @@ export function Phase2Chat({
                 ),
             ),
           );
-          setStatus({
-            kind: 'error',
-            message: message || 'No se pudo generar la respuesta del coach.',
-          });
+          markError(
+            message || 'No se pudo generar la respuesta del coach.',
+            `phase2/message stream error (${code || 'UNKNOWN'})`,
+          );
         },
       });
 
       if (streamOk) {
         setStatus({ kind: 'ready' });
+        clearError();
       }
     } catch {
-      setStatus({ kind: 'error', message: 'Error de red.' });
+      markError('Error de red.', 'phase2/message → network error');
     }
+  };
+
+  const send = async () => {
+    const trimmed = inputDraft.value.trim();
+    if (!trimmed || status.kind !== 'ready' || !online) return;
+    void doSend(trimmed, false);
+  };
+
+  const retry = async () => {
+    if (!online) return;
+    const pending = [...turns].reverse().find((t) => t.pending);
+    if (!pending) return;
+    void doSend(pending.content, true);
+  };
+
+  const discard = () => {
+    const pendingIdx = [...turns]
+      .map((t, i) => ({ t, i }))
+      .reverse()
+      .find(({ t }) => t.pending)?.i;
+    if (pendingIdx === undefined) return;
+    const recovered = turns[pendingIdx].content;
+    setTurns((t) => t.filter((_, i) => i !== pendingIdx));
+    inputDraft.setValue(recovered);
+    setStatus({ kind: 'ready' });
+    clearError();
   };
 
   const close = async () => {
     setStatus({ kind: 'closing' });
+    clearError();
     try {
       const res = await fetch(`/api/session/${token}/phase2/finish`, {
         method: 'POST',
       });
       if (!res.ok) {
-        setStatus({
-          kind: 'error',
-          message: 'No se pudo cerrar la sesión. Inténtalo otra vez.',
-        });
+        markError(
+          'No se pudo cerrar la sesión. Inténtalo otra vez.',
+          `phase2/finish → HTTP ${res.status}`,
+        );
         return;
       }
       router.refresh();
     } catch {
-      setStatus({ kind: 'error', message: 'Error de red cerrando sesión.' });
+      markError('Error de red cerrando sesión.', 'phase2/finish → network error');
     }
   };
+
+  const hasPending = turns.some((t) => t.pending);
+  const showSupport =
+    status.kind === 'error' &&
+    errorSince !== null &&
+    now - errorSince >= SUPPORT_THRESHOLD_MS &&
+    online;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 py-6 md:py-10">
@@ -196,6 +281,8 @@ export function Phase2Chat({
           {coachTurnNumber}/50 · nivel {level}
         </p>
       </header>
+
+      <OfflineBanner />
 
       <div
         ref={scrollRef}
@@ -209,22 +296,53 @@ export function Phase2Chat({
               className={
                 t.role === 'coach'
                   ? 'rounded bg-white p-3 text-neutral-900 shadow-sm'
-                  : 'rounded bg-neutral-900 p-3 text-white'
+                  : `rounded bg-neutral-900 p-3 text-white ${t.pending ? 'opacity-60' : ''}`
               }
             >
               <p className="whitespace-pre-wrap">{t.content}</p>
+              {t.pending && (
+                <p className="mt-1 text-xs italic text-white/70">
+                  Pendiente de enviar — reintenta cuando quieras.
+                </p>
+              )}
             </li>
           ))}
         </ul>
       </div>
 
       {status.kind === 'error' && (
-        <p
+        <div
           role="alert"
-          className="mt-3 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
+          className="mt-3 space-y-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
         >
-          {status.message}
-        </p>
+          <p>{status.message}</p>
+          {hasPending && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void retry()}
+                disabled={!online}
+                className="rounded bg-red-800 px-3 py-1 text-xs font-medium text-white hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Reintentar
+              </button>
+              <button
+                type="button"
+                onClick={discard}
+                className="rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+              >
+                Descartar y editar
+              </button>
+            </div>
+          )}
+          {showSupport && (
+            <SupportTicket
+              token={token}
+              phase="phase2"
+              technical={status.technical}
+            />
+          )}
+        </div>
       )}
 
       <form
@@ -236,16 +354,21 @@ export function Phase2Chat({
       >
         <input
           type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          value={inputDraft.value}
+          onChange={(e) => inputDraft.setValue(e.target.value)}
           placeholder="Escribe tu respuesta…"
-          disabled={status.kind !== 'ready'}
+          disabled={status.kind !== 'ready' || hasPending}
           aria-label="Tu respuesta"
           className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 disabled:opacity-60"
         />
         <button
           type="submit"
-          disabled={status.kind !== 'ready' || input.trim().length === 0}
+          disabled={
+            status.kind !== 'ready' ||
+            hasPending ||
+            !online ||
+            inputDraft.value.trim().length === 0
+          }
           className="rounded bg-neutral-900 px-4 py-2 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {status.kind === 'sending'

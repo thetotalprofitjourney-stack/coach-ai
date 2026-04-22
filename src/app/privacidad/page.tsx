@@ -90,6 +90,16 @@ export default function PrivacyPage() {
             múltiples de la misma sesión. Si no rellenas ese campo, no
             recogemos ningún dato de contacto.
           </p>
+          <p className="text-base leading-relaxed text-neutral-700">
+            Si durante la sesión tienes un problema persistente (errores
+            del coach, cortes de red, etc.) puedes abrir opcionalmente un
+            ticket de soporte desde la propia interfaz. Al hacerlo, se
+            envía al operador un email con el identificador técnico de
+            tu sesión, la fase en la que estabas y el mensaje que
+            escribas, y con tu email como dirección de respuesta. Esa
+            dirección no se almacena en nuestros servidores: viaja sólo
+            como campo <em>Reply-To</em> del email al operador.
+          </p>
         </section>
 
         <section className="mt-10 space-y-4">

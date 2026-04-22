@@ -1,12 +1,61 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formPayloadSchema, type FormPayload } from '@/lib/api/schemas';
 import type { ResumeLinkData } from '@/lib/session/resume-link';
 import { ResumeLinkNotice } from './ResumeLinkNotice';
+
+// Clave de borrador en localStorage. El contenido es JSON parcial del
+// FormPayload; si un corte de luz o crash del navegador rompe la sesión,
+// al volver a abrir el enlace los campos se rehidratan. Se borra tras
+// POST /form exitoso (ver onSubmit).
+const DRAFT_KEY_PREFIX = 'coach-ai:draft:';
+function draftKey(token: string) {
+  return `${DRAFT_KEY_PREFIX}${token}:initial-form`;
+}
+
+type DraftShape = Partial<{
+  name: string;
+  age: number | '';
+  familyContext: string;
+  location: string;
+  professionalMoment: string;
+  trigger: string;
+}>;
+
+function readDraft(token: string): DraftShape | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(draftKey(token));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as DraftShape;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(token: string, draft: DraftShape): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(draftKey(token), JSON.stringify(draft));
+  } catch {
+    // Quota / privado: silenciar.
+  }
+}
+
+function clearDraft(token: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(draftKey(token));
+  } catch {
+    // Silenciar.
+  }
+}
 
 // Opciones fijas de §2.3. "Otro" activa el input de texto libre; el valor
 // enviado en ese caso es el texto que el usuario escriba.
@@ -42,6 +91,7 @@ export function InitialForm({
     handleSubmit,
     setValue,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormPayload>({
     resolver: zodResolver(formPayloadSchema),
@@ -54,6 +104,66 @@ export function InitialForm({
       trigger: '',
     },
   });
+
+  // Rehidrata el borrador al montar. Si existen valores, setValue en
+  // cada campo presente. No pisamos valores ya puestos por defaultValues
+  // porque estos están vacíos; la primera renderización muestra los
+  // campos vacíos y a los pocos ms se rellenan con el borrador. Mejor
+  // un flash mínimo que un hydration mismatch SSR.
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+    const draft = readDraft(token);
+    if (!draft) return;
+    if (typeof draft.name === 'string') setValue('name', draft.name);
+    if (typeof draft.age === 'number') setValue('age', draft.age);
+    if (typeof draft.familyContext === 'string')
+      setValue('familyContext', draft.familyContext);
+    if (typeof draft.location === 'string') setValue('location', draft.location);
+    if (typeof draft.professionalMoment === 'string') {
+      setValue('professionalMoment', draft.professionalMoment);
+      // Reconstruye el select: si el texto coincide con una opción
+      // cerrada, se selecciona esa opción; si no, es "Otro" con texto
+      // libre.
+      const closed = (PROFESSIONAL_OPTIONS as readonly string[]).includes(
+        draft.professionalMoment,
+      );
+      setProfessionalChoice(
+        draft.professionalMoment === ''
+          ? ''
+          : closed
+            ? draft.professionalMoment
+            : OTHER,
+      );
+    }
+    if (typeof draft.trigger === 'string') setValue('trigger', draft.trigger);
+  }, [token, setValue]);
+
+  // Persiste el borrador con debounce cada vez que cambian los valores.
+  // Usamos `watch()` como fuente. No guardamos la elección del select
+  // aparte: si el usuario eligió "Otro" y escribió texto, professional
+  // Moment ya contiene ese texto — al rehidratar lo reconocemos como
+  // "Otro" porque no está en la lista cerrada.
+  useEffect(() => {
+    const subscription = watch((values) => {
+      // Debounce ligero con requestIdleCallback o setTimeout.
+      // El cuerpo es barato (stringify), así que un timeout de 200ms
+      // sobra. Persistimos TODO el objeto incluso con un único cambio.
+      const id = setTimeout(() => {
+        writeDraft(token, {
+          name: values.name ?? '',
+          age: typeof values.age === 'number' ? values.age : '',
+          familyContext: values.familyContext ?? '',
+          location: values.location ?? '',
+          professionalMoment: values.professionalMoment ?? '',
+          trigger: values.trigger ?? '',
+        });
+      }, 200);
+      return () => clearTimeout(id);
+    });
+    return () => subscription.unsubscribe();
+  }, [token, watch]);
 
   const isOther = professionalChoice === OTHER;
 
@@ -85,6 +195,7 @@ export function InitialForm({
     }
 
     if (res.ok) {
+      clearDraft(token);
       router.refresh();
       return;
     }
