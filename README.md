@@ -6,6 +6,57 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
+### Mejoras post-MVP (cinco iteraciones de producto)
+
+Tras el MVP cerrado en el Paso 15, se implementaron cinco mejoras
+priorizadas sobre conversión y satisfacción, surgidas de la revisión
+independiente del producto en `COACH_COMENTARIOS.md`. Cada una en su
+propia rama y PR separados, revisables en aislamiento.
+
+1. **Streaming del coach en Fase 2.** Las rutas `/phase2/bootstrap` y
+   `/phase2/message` devuelven `application/x-ndjson` con eventos
+   `{type:'delta',text}` → `{type:'done',…}` → `{type:'error',…}`. El
+   cliente consume el stream vía `consumeCoachStream` y renderiza el
+   turno del coach palabra a palabra. Elimina la fricción del spinner
+   de 20-60 s que la revisión identificaba como punto #1 de abandono.
+2. **Demo gratuita `/preview/{token}`.** Mini-sesión de 3 turnos con
+   Haiku 4.5 (sin pago, sin formulario) y un prompt no-directivo
+   comprimido. Dos tablas nuevas: `preview_sessions` (conversación
+   JSON + contador) y `preview_quotas` (hash de IP + cupo diario).
+   Banner ámbar persistente para que quede claro que es una demo, no
+   el producto. `PREVIEW_IP_HASH_SALT` + `PREVIEW_DAILY_LIMIT_PER_IP`
+   controlan coste; TTL 1 h para las demos.
+3. **Reenvío opt-in del informe por email.** En la pantalla del
+   informe aparece (si SMTP está configurado) un campo de email y un
+   botón "Enviarme copia". `POST /api/session/{token}/report/email`
+   genera PDF+DOCX en memoria, los adjunta y los envía vía
+   `nodemailer` + SMTP genérico. La dirección NO se persiste; sólo
+   queda `final_reports.emailed_at` para bloquear reenvíos.
+4. **Pausa y reanudación en 48 horas.** `SESSION_TTL_HOURS` (default
+   48, clamp 12-168) sustituye la constante 24h del cron. Un nuevo
+   `ResumeLinkNotice` muestra la URL completa con botón de copia en
+   las pantallas de entrada (InitialForm, Phase1Chat,
+   Phase2Bootstrap). El token sigue siendo un UUID v4 verificado vía
+   lookup en BD; no se firma adicionalmente.
+5. **Resiliencia de sesión.** Cuatro mejoras colaterales para que el
+   usuario no se quede varado: (a) borradores autoguardados en
+   `localStorage` del formulario inicial y de los inputs de Fase 1 y
+   Fase 2; (b) turnos marcados pending con botones "Reintentar" /
+   "Descartar y editar" cuando el coach falla; (c) `OfflineBanner`
+   basado en `navigator.onLine` que deshabilita Enviar sin perder el
+   borrador; (d) `SupportTicket` tras 30 s de error sostenido, form
+   inline con email del usuario (Reply-To) y descripción corta, que
+   envía email al operador (`SUPPORT_EMAIL`) con el token de sesión
+   para que pueda investigar y reembolsar desde Stripe si procede.
+
+Lista completa de env vars nuevas: `PREVIEW_IP_HASH_SALT`,
+`PREVIEW_DAILY_LIMIT_PER_IP`, `SESSION_TTL_HOURS`, `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`,
+`EMAIL_FROM`, `EMAIL_SUBJECT`, `SUPPORT_EMAIL`. Detalle en
+`.env.example` y en `INSTALACION.md` §2. Migraciones nuevas:
+`20260422000000_add_preview_sessions` y
+`20260422010000_add_emailed_at_to_final_reports`.
+
 Paso 15 — Coste de API por sesión y latencia (§7.3, decisión E del
 Paso 14). Segundo paso post-MVP. Cierra las dos líneas de §7.3 que
 el Paso 14 dejó fuera: coste agregado por sesión y tiempo medio de
@@ -145,10 +196,14 @@ Endpoints activos:
   `phase1_completed`. `maxDuration=300`.
 - `POST /api/session/{token}/phase2/bootstrap` — crea `phase2_state`
   inicial, emite el primer turno del coach y transiciona a
-  `phase2_in_progress`. Requiere `phase1_completed`.
+  `phase2_in_progress`. Requiere `phase1_completed`. Responde
+  `application/x-ndjson` con eventos `delta`/`done`/`error` (streaming
+  del coach, mejora post-MVP #1).
 - `POST /api/session/{token}/phase2/message` — un turno completo: corre
   auxiliar (Haiku), actualiza `phase2_state` y emite la siguiente
-  pregunta del coach (Opus 4.7 + thinking 10k).
+  pregunta del coach (Opus 4.7 + thinking 10k). Valida y responde
+  JSON ante errores de pre-stream (auxiliar, state, validación);
+  abre el stream NDJSON sólo una vez el coach empieza a generar.
 - `POST /api/session/{token}/phase2/finish` — parsea los 11 bloques del
   último turno del coach, persiste `final_reports` y transiciona a
   `phase2_completed`.
@@ -159,6 +214,23 @@ Endpoints activos:
 - `GET /api/session/{token}/report/docx` — gemelo del anterior para
   formato Word (`vnd.openxmlformats-officedocument.wordprocessingml.document`).
   Comparte loader y marcado idempotente de `downloadedAt`.
+- `POST /api/session/{token}/report/email` — envío opt-in del informe
+  por email (mejora post-MVP #3). Body `{ email }`. Genera PDF+DOCX
+  en memoria, los adjunta y los manda vía SMTP. Marca
+  `final_reports.emailed_at` para impedir reenvíos. 503 si SMTP no
+  configurado, 409 si ya se envió, 502 si el SMTP falla.
+- `POST /api/session/{token}/support-ticket` — ticket opt-in al
+  operador cuando una sesión lleva >30 s en error (mejora post-MVP
+  #5). Body `{ userEmail, userDescription?, phase, technical? }`. El
+  email del usuario viaja como `Reply-To`, no se persiste en BD.
+  Requiere `SUPPORT_EMAIL` + SMTP configurados, si no responde 503.
+- `POST /api/preview/start` — arranca una demo gratuita (mejora
+  post-MVP #2). Consume cupo diario por IP hasheada, llama a Haiku
+  para el turno 1 y devuelve `{ token, coachMessage }`. 429 si el
+  cupo diario se agotó.
+- `POST /api/preview/{token}/message` — avanza un turno de la demo.
+  Body `{ userMessage }` (máx 500 chars). Rechaza con 409 al alcanzar
+  `PREVIEW_MAX_TURNS=3`.
 - `POST /api/session/{token}/close` — transición terminal a `closed`
   desde cualquier estado activo.
 - `POST /api/dev/anthropic-ping` — endpoint interno del operador.
@@ -204,7 +276,13 @@ Rutas activas:
   chat con el administrador DISC (`phase1_in_progress`), transición con
   spinner (`phase1_completed`), chat con el coach (`phase2_in_progress`),
   informe de 11 bloques (`phase2_completed`), pantalla final (`closed`).
-  Token inválido o inexistente → 404.
+  Las pantallas de entrada muestran un `ResumeLinkNotice` con la URL
+  copiable y el plazo de 48 h para retomar. Token inválido o
+  inexistente → 404.
+- `GET /preview/{token}` — pantalla de la demo gratuita (mejora
+  post-MVP #2). Pinta `PreviewChat` con banner "Demo · coach ligero ·
+  N/3". Tras agotar los 3 turnos, sustituye el input por la CTA a la
+  sesión completa.
 
 ## Paso 7 — smoke test end-to-end
 

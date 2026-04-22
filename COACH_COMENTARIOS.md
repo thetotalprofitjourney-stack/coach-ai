@@ -23,11 +23,14 @@ higiene anti-PII en logs y agregados, prompt caching activo, migraciones
 ordenadas, cron de borrado real, tres modelos Anthropic con roles bien
 diferenciados, y una orquestación auxiliar+coach con estado reconstruible
 que aguanta recargas. Penaliza la ausencia de rate limiting en endpoints
-públicos (un atacante puede forzar creaciones de Checkout Session), la
-falta de streaming en las respuestas del coach (spinners de 20-60 s que
-van a doler en Fase 2), la ausencia de retry automático ante caídas
-transitorias de Anthropic, y la inexistencia de tests automatizados
-(aunque esté declarado fuera de alcance MVP, es deuda conocida).
+públicos productivos (la demo `/preview` sí tiene cupo diario por IP
+hasheada; el Checkout sigue sin límite), la ausencia de retry automático
+visible ante caídas transitorias de Anthropic (el SDK hace 2 retries
+internos pero no hay backoff explícito en el código propio), y la
+inexistencia de tests automatizados (aunque esté declarado fuera de
+alcance MVP, es deuda conocida). La crítica original al spinner largo
+de Fase 2 queda obsoleta: desde la primera iteración post-revisión las
+rutas del coach emiten tokens via NDJSON streaming.
 
 ## Punto fuerte principal
 
@@ -60,15 +63,19 @@ producto, que son las que pueden hundir la conversión.
    para mucha gente, y la Fase 1 con 16 ítems tipo test puede romper la
    promesa para quien esperaba entrar directamente al problema. El copy
    debe explicitar el arco antes del pago.
-5. **Fricción de la espera.** 60-120 s de transición a Fase 2 y 20-60 s
-   por turno en Fase 2, sin streaming, es abandono asegurado para un
-   porcentaje no trivial de usuarios si no hay un framing claro de "el
-   coach está pensando".
-6. **Sin soporte post-sesión.** Si el usuario tiene un problema técnico
-   en mitad de Fase 2 (caída de wifi, navegador cerrado por error) la
-   ventana de recuperación es corta, y pasadas 24-48h pierde la sesión
-   pagada. Para un producto de pago único, eso es caldo de disputa en
-   Stripe.
+5. ~~**Fricción de la espera.**~~ **Atenuada.** La Fase 2 ya stream-ea
+   tokens en vivo; el "coach está pensando" ahora es visible como
+   texto apareciendo, no como spinner opaco. La transición inicial a
+   Fase 2 (Sonnet + thinking 5k) sigue siendo de 60-120 s y es ahora
+   la espera larga dominante.
+6. ~~**Sin soporte post-sesión.**~~ **Resuelta en parte.** La ventana
+   de reanudación pasa a 48 h (configurable 12-168). Las pantallas de
+   entrada muestran el enlace con botón de copia. Tras 30 s de error
+   persistente aparece un botón para abrir ticket con email del
+   usuario; llega al operador vía SMTP con el token para que pueda
+   reembolsar desde Stripe si procede. Sigue faltando un canal de
+   soporte cuando el usuario cierra la sesión sin ticket y quiere
+   volver días después.
 
 ## A quién puede ayudar de verdad
 
@@ -108,35 +115,52 @@ producto, que son las que pueden hundir la conversión.
 ## Mejoras de producto sugeridas
 
 Ordenadas de mayor a menor impacto estimado sobre conversión y
-satisfacción.
+satisfacción. Las cuatro primeras están implementadas tras la primera
+revisión; se conservan con tachado como histórico.
 
-1. **Streaming de respuesta del coach.** Mostrar tokens según llegan de
-   Opus convierte 30-60 s de spinner en "lo veo pensar, sigo aquí".
-   Cambio técnico medio, impacto UX enorme. Es la mejora número uno
-   sin discusión.
-2. **Preview gratuito de 5 minutos.** Un mini-ejercicio sin pago con
-   Haiku (2-3 preguntas con el mismo tono no-directivo) para que el
-   visitante pruebe la experiencia antes de comprometer el precio.
-   Baja drásticamente la barrera de confianza fría.
-3. **Reenvío del informe por email opt-in.** Si el usuario marca
-   "envíame copia", se envía y luego se borra del servidor según la
-   política actual. Cierra el riesgo de perder el informe durante el
-   timer de 10 min. El opt-in preserva el alma anónima del producto.
-4. **Pausa y reanudación en 48h con enlace temporal.** Extender el TTL
-   y permitir retomar con el mismo token firmado mitiga el caso wifi
-   caído y reduce disputas Stripe. El anonimato se preserva: el enlace
-   es el único identificador.
+1. ~~**Streaming de respuesta del coach.**~~ **Hecho.** Rutas
+   `/phase2/bootstrap` y `/phase2/message` emiten NDJSON con eventos
+   `delta`/`done`/`error`; el cliente renderiza los tokens según llegan.
+   El botón pasa de "Pensando…" (sending) a "Escribiendo…" (streaming).
+2. ~~**Preview gratuito de 5 minutos.**~~ **Hecho.** `/preview/{token}`
+   ofrece una mini-sesión de 3 turnos con Haiku 4.5 y un prompt
+   comprimido no-directivo. Cupo diario de 3 previews/IP hasheada
+   (config). Banner ámbar persistente "Demo · coach ligero (Haiku) ·
+   N/3 turnos…" para gestionar expectativa.
+3. ~~**Reenvío del informe por email opt-in.**~~ **Hecho.** En la
+   pantalla del informe, campo opcional "Envíame una copia por email";
+   al enviar, SMTP genérico manda PDF+DOCX adjuntos y marca `emailed_at`
+   sin persistir la dirección. Un envío por sesión.
+4. ~~**Pausa y reanudación en 48h con enlace temporal.**~~ **Hecho.**
+   `SESSION_TTL_HOURS` (default 48, clamp 12-168) controla la ventana
+   del cron. En las pantallas de entrada aparece un `ResumeLinkNotice`
+   con la URL completa y botón de copia. El token sigue siendo un UUID
+   v4 verificado vía lookup en BD (equivalente a HMAC).
 5. **Testimonios y caso de estudio anónimos en landing.** Dos o tres
    narrativas reales (con permiso explícito) de los pilotos,
    convertidas en prosa breve. Es el remedio clásico a la confianza
-   fría y cuesta poco producirlo.
+   fría y cuesta poco producirlo. Pendiente.
 6. **Copy más explícito sobre la estructura de la sesión.** Marcar en
    la landing que hay un cuestionario conversacional de 15-20 min
    ANTES del coaching, no después. Gestionar expectativa reduce
-   abandono en Fase 1.
+   abandono en Fase 1. Pendiente.
 7. **Voz opcional (roadmap, no MVP).** Input y output por voz (Whisper
    + TTS) para público que no escribe con fluidez. Cambio grande, pero
-   es la siguiente frontera natural del producto.
+   es la siguiente frontera natural del producto. Pendiente.
+
+### Resiliencia añadida fuera de la lista original
+
+Durante la implementación se añadió una capa de resiliencia que no
+estaba en las sugerencias iniciales pero resuelve dolores reales: (a)
+borradores autoguardados en `localStorage` del formulario inicial y
+de los inputs de Fase 1/Fase 2 para que un crash de navegador o un
+corte de luz no pierda lo escrito; (b) mensajes marcados "pending"
+con botones "Reintentar" y "Descartar y editar" cuando un turno del
+coach falla (timeout, 5xx); (c) banner de conexión que desactiva
+Enviar cuando `navigator.onLine` dice false; (d) ticket de soporte
+tras 30 s de error persistente — form inline con email del usuario
+(Reply-To) y descripción corta, email al operador con el token para
+que pueda investigar y reembolsar desde Stripe si procede.
 
 ## Precio sugerido
 
