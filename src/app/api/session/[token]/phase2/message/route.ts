@@ -6,6 +6,7 @@ import { jsonError, jsonOk } from '@/lib/api/response';
 import { callAuxiliar } from '@/lib/fase2/call-auxiliar';
 import { callCoach } from '@/lib/fase2/call-coach';
 import type { RunState } from '@/lib/fase2/types';
+import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { prisma } from '@/lib/prisma';
 import { loadSessionOrResponse } from '@/lib/session/loader';
 import {
@@ -103,6 +104,13 @@ export async function POST(
   try {
     const auxiliar = await callAuxiliar(withUser);
     auxiliarOutput = auxiliar.output;
+    await recordLlmCall({
+      sessionId: session.id,
+      model: auxiliar.model,
+      kind: 'fase2_auxiliar',
+      usage: auxiliar.usage,
+      durationMs: auxiliar.latencyMs,
+    });
   } catch (err) {
     return handleAnthropicError(err, 'phase2/message auxiliar');
   }
@@ -134,6 +142,13 @@ export async function POST(
   try {
     const coach = await callCoach(coachState);
     coachText = coach.text;
+    await recordLlmCall({
+      sessionId: session.id,
+      model: coach.model,
+      kind: 'fase2_coach_turn',
+      usage: coach.usage,
+      durationMs: coach.latencyMs,
+    });
   } catch (err) {
     return handleAnthropicError(err, 'phase2/message coach');
   }
