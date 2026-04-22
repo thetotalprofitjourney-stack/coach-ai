@@ -28,6 +28,11 @@ interface Row {
   avgSecs: string;
   p50Secs: string;
   p95Secs: string;
+  // Paso 15 — coste API y latencia Opus (la más relevante: el coach
+  // es el gasto dominante).
+  costUsd: string;
+  costPerSession: string;
+  latOpus: string;
 }
 
 function parseDaysArg(argv: string[]): number {
@@ -49,6 +54,13 @@ function formatUtcDate(date: Date): string {
 function formatNullable(n: number | null, digits = 0): string {
   if (n === null) return '—';
   return digits > 0 ? n.toFixed(digits) : String(Math.round(n));
+}
+
+function formatCost(n: number | null): string {
+  if (n === null) return '—';
+  // 4 decimales cuando < 1 USD para que el céntimo sea visible; 2 en
+  // el resto.
+  return n < 1 ? n.toFixed(4) : n.toFixed(2);
 }
 
 function padRight(s: string, w: number): string {
@@ -75,23 +87,30 @@ function printTable(rows: Row[]): void {
     'avg s',
     'p50 s',
     'p95 s',
+    'coste $',
+    'p/sesión $',
+    'lat Opus ms',
   ];
   const widths = headers.map((h) => h.length);
+  const rowCells = (r: Row) => [
+    r.date,
+    String(r.created),
+    String(r.formSub),
+    String(r.p1c),
+    String(r.p2c),
+    String(r.closed),
+    String(r.abandoned),
+    String(r.downloads),
+    r.avgTurns,
+    r.avgSecs,
+    r.p50Secs,
+    r.p95Secs,
+    r.costUsd,
+    r.costPerSession,
+    r.latOpus,
+  ];
   for (const r of rows) {
-    const cells = [
-      r.date,
-      String(r.created),
-      String(r.formSub),
-      String(r.p1c),
-      String(r.p2c),
-      String(r.closed),
-      String(r.abandoned),
-      String(r.downloads),
-      r.avgTurns,
-      r.avgSecs,
-      r.p50Secs,
-      r.p95Secs,
-    ];
+    const cells = rowCells(r);
     for (let i = 0; i < cells.length; i++) {
       if (cells[i].length > widths[i]) widths[i] = cells[i].length;
     }
@@ -105,22 +124,7 @@ function printTable(rows: Row[]): void {
   console.log(line(headers));
   console.log(widths.map((w) => '-'.repeat(w)).join('  '));
   for (const r of rows) {
-    console.log(
-      line([
-        r.date,
-        String(r.created),
-        String(r.formSub),
-        String(r.p1c),
-        String(r.p2c),
-        String(r.closed),
-        String(r.abandoned),
-        String(r.downloads),
-        r.avgTurns,
-        r.avgSecs,
-        r.p50Secs,
-        r.p95Secs,
-      ]),
-    );
+    console.log(line(rowCells(r)));
   }
 }
 
@@ -160,6 +164,9 @@ async function main(): Promise<void> {
     avgSecs: formatNullable(r.avgDurationSeconds),
     p50Secs: formatNullable(r.p50DurationSeconds),
     p95Secs: formatNullable(r.p95DurationSeconds),
+    costUsd: formatCost(r.totalCostUsd),
+    costPerSession: formatCost(r.avgCostUsdPerCompletedSession),
+    latOpus: formatNullable(r.avgLatencyMsOpus),
   }));
 
   printTable(formatted);
@@ -173,6 +180,7 @@ async function main(): Promise<void> {
       closed: acc.closed + r.sessionsClosed,
       abandoned: acc.abandoned + r.sessionsAbandoned,
       downloads: acc.downloads + r.reportsDownloaded,
+      costUsd: acc.costUsd + (r.totalCostUsd ?? 0),
     }),
     {
       created: 0,
@@ -182,15 +190,21 @@ async function main(): Promise<void> {
       closed: 0,
       abandoned: 0,
       downloads: 0,
+      costUsd: 0,
     },
   );
+
+  const weightedCostPerSession =
+    totals.p2c > 0 ? totals.costUsd / totals.p2c : null;
 
   console.log('');
   console.log(
     `Totales (${rows.length} días con datos): ` +
       `creadas=${totals.created}, form=${totals.formSub}, ` +
       `p1c=${totals.p1c}, p2c=${totals.p2c}, cerradas=${totals.closed}, ` +
-      `abandonadas=${totals.abandoned}, descargas=${totals.downloads}`,
+      `abandonadas=${totals.abandoned}, descargas=${totals.downloads}, ` +
+      `coste=$${formatCost(totals.costUsd)}, ` +
+      `p/sesión=$${formatCost(weightedCostPerSession)}`,
   );
 
   await prisma.$disconnect();

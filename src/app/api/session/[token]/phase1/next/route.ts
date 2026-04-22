@@ -7,6 +7,7 @@ import { factorOf, getItemByIndex } from '@/lib/fase1/banco';
 import { callAdministrador } from '@/lib/fase1/call-administrador';
 import { parseUserAnswer } from '@/lib/fase1/parse-answer';
 import type { Fase1RunState } from '@/lib/fase1/types';
+import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { loadSessionOrResponse } from '@/lib/session/loader';
 import { reconstructFase1RunState } from '@/lib/session/reconstruct';
 import { prisma } from '@/lib/prisma';
@@ -75,6 +76,13 @@ export async function POST(
         directive: 'repreguntar',
         lastUserMessage: userMessage,
       });
+      await recordLlmCall({
+        sessionId: session.id,
+        model: admin.model,
+        kind: 'fase1_admin',
+        usage: admin.usage,
+        durationMs: admin.latencyMs,
+      });
       return jsonOk({
         adminMessage: admin.text,
         itemIndex: state.currentItemIndex,
@@ -131,6 +139,13 @@ export async function POST(
       state: nextState,
       directive,
       lastUserMessage: userMessage,
+    });
+    await recordLlmCall({
+      sessionId: session.id,
+      model: admin.model,
+      kind: 'fase1_admin',
+      usage: admin.usage,
+      durationMs: admin.latencyMs,
     });
     return jsonOk({
       adminMessage: admin.text,

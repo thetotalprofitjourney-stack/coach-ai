@@ -6,6 +6,25 @@ Especificación completa en [`docs/`](./docs/README.md).
 
 ## Estado actual
 
+Paso 15 — Coste de API por sesión y latencia (§7.3, decisión E del
+Paso 14). Segundo paso post-MVP. Cierra las dos líneas de §7.3 que
+el Paso 14 dejó fuera: coste agregado por sesión y tiempo medio de
+respuesta por llamada a Claude. Nueva tabla transitoria `llm_calls`
+(FK CASCADE con sessions; vive hasta el cron nocturno) que persiste
+`usage` + `duration_ms` por cada llamada productiva a Anthropic.
+`collectDailyStats` la agrega por modelo al final del collect y
+rellena 9 columnas nuevas en `daily_stats` (tokens por tipo, coste
+USD total, coste USD por sesión completada, latencia media por
+familia: haiku/sonnet/opus). Tarifas hardcoded en
+`src/lib/metrics/pricing.ts` con fecha de consulta
+(console.anthropic.com/pricing, 2026-04-21); actualizarlas es
+redeploy, no migración. `GET /api/dev/stats` y `npm run metrics:show`
+exponen los nuevos campos sin romper el formato anterior. No se
+instrumentan las rutas `/api/dev/*` (son validación aislada, no
+tráfico real). Ver la sección "Paso 15 — Coste de API por sesión y
+latencia" al final de este README y el detalle técnico en
+[`docs/paso-15-coste-api.md`](./docs/paso-15-coste-api.md).
+
 Paso 14 — Métricas agregadas sin PII (§7.3). Primer paso post-MVP.
 Añade observabilidad operativa sobre lo que el MVP dejó cubierto con
 dos líneas de log (cron + Stripe webhook): (a) tabla `daily_stats`
@@ -1012,9 +1031,93 @@ que ejecuta el operador siguiendo el runbook del Paso 13. El cron
 del host no cambia: el mismo endpoint `GET /api/cron/cleanup` ahora
 dispara `runNightly` internamente.
 
-Detalle técnico y caveats (frontera de días, idempotencia, coste
-Anthropic fuera de alcance, queries SQL de ejemplo) en
-[`docs/paso-14-metrics.md`](./docs/paso-14-metrics.md).
+Detalle técnico y caveats (frontera de días, idempotencia, queries
+SQL de ejemplo) en
+[`docs/paso-14-metrics.md`](./docs/paso-14-metrics.md). El caveat
+"Coste Anthropic" que quedó fuera del Paso 14 lo cierra el Paso 15.
+
+## Paso 15 — Coste de API por sesión y latencia
+
+Segundo paso post-MVP. Cierra las dos líneas de §7.3 que el Paso 14
+dejó explícitamente fuera: coste agregado de API por sesión y
+tiempo medio de respuesta por llamada a Claude.
+
+**Qué añade al código.**
+
+- Nuevo modelo `LlmCall` (`prisma/schema.prisma`) + migración
+  `20260421030000_add_llm_calls_and_cost_metrics`. Tabla transitoria
+  con FK `ON DELETE CASCADE` a `sessions`: persiste `usage` + `duration_ms`
+  por cada llamada productiva a Anthropic y se borra junto con las
+  sesiones en el cleanup nocturno (consistente con el compromiso
+  anti-PII de §6.4).
+- 9 columnas nuevas en `daily_stats` (todas nullable):
+  `total_input_tokens`, `total_output_tokens`,
+  `total_cache_creation_tokens`, `total_cache_read_tokens` (BigInt),
+  `total_cost_usd`, `avg_cost_usd_per_completed_session`,
+  `avg_latency_ms_haiku`, `avg_latency_ms_sonnet`, `avg_latency_ms_opus`.
+- `src/lib/metrics/pricing.ts` con `calculateCostUsd(model, usage)`
+  puro y tarifas hardcoded para `haiku-4-5`, `sonnet-4-6`, `opus-4-7`
+  (fuente: console.anthropic.com/pricing, consultado 2026-04-21).
+  Actualizar precios es editar el objeto `PRICING` y redeploy — no
+  requiere migración.
+- `src/lib/metrics/llm-calls.ts` con `recordLlmCall` best-effort:
+  envuelve el insert en try/catch, loggea
+  `event=llm_call_record_failed` a stderr si falla, nunca propaga.
+- Instrumentación de los 5 route handlers productivos que invocan
+  los 4 wrappers de Anthropic: `phase1/start`, `phase1/next` (ambos
+  kind `fase1_admin`), `phase1/finish` (`fase1_sintesis`),
+  `phase2/bootstrap` (`fase2_coach_bootstrap`), `phase2/message`
+  (`fase2_auxiliar` + `fase2_coach_turn`). El registro se hace desde
+  el handler — los wrappers siguen devolviendo `{ usage, latencyMs,
+  model }` sin cambios.
+- Agregación en `collectDailyStats` con un único `groupBy` por
+  modelo y `calculateCostUsd` sobre los totales por modelo. Si el
+  día no tiene `llm_calls`, las 9 columnas quedan null y el upsert
+  sigue funcionando.
+- `GET /api/dev/stats` y `scripts/metrics-show.ts` extendidos con
+  las nuevas columnas y totales ponderados sobre el rango.
+  `metrics:show` añade 3 columnas (`coste $`, `p/sesión $`, `lat Opus ms`).
+
+**Qué NO añade.** Alertas de presupuesto, desglose por `kind` en
+`daily_stats`, coste por sesión individual (imposible por diseño
+anti-PII), conversión a EUR, percentiles p50/p95 de latencia,
+instrumentación de `/api/dev/*` (tráfico operador, no productivo),
+dashboard web, cambios en prompts. Ver §7 de
+[`docs/paso-15-coste-api.md`](./docs/paso-15-coste-api.md) para la
+lista explícita.
+
+**Consultar los datos.** Scripts y endpoints sin cambios respecto
+al Paso 14 — sólo campos nuevos en la respuesta:
+
+```bash
+# CLI contra la BD local (o con DATABASE_URL apuntando a prod):
+npm run metrics:show                # últimos 30 días con coste y latencia Opus
+npm run metrics:show -- --days 7
+
+# Endpoint HTTP con el mismo header que el resto de /api/dev/*:
+curl -sS -H "X-Session-Create-Secret: $SECRET" \
+  "$HOST/api/dev/stats?from=2026-04-01&to=2026-04-30" | jq
+
+# SQL ad-hoc sobre llm_calls antes del cron para desglose por kind:
+sudo -iu postgres psql coach_ai_prod -c "
+SELECT kind, COUNT(*), SUM(input_tokens), SUM(output_tokens), AVG(duration_ms)::int
+FROM llm_calls
+WHERE created_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
+GROUP BY kind;"
+```
+
+**Deploy.** El Paso 15 **no** despliega nada en prod — eso es un
+`git pull && docker compose build && up -d` + `prisma migrate deploy`
+que ejecuta el operador siguiendo el runbook del Paso 13. La
+migración es aditiva (tabla nueva + columnas nullable); Postgres la
+aplica con la app corriendo. El cron del host no cambia: el mismo
+`GET /api/cron/cleanup` dispara `runNightly` y el `collect` ve la
+tabla `llm_calls` automáticamente desde el primer cron post-deploy.
+
+Detalle técnico completo (cálculo del coste, tarifas vigentes, zonas
+grises, interpretación de `avgCostUsdPerCompletedSession`, caveats,
+procedimiento para actualizar tarifas) en
+[`docs/paso-15-coste-api.md`](./docs/paso-15-coste-api.md).
 
 ## Documentación del producto
 

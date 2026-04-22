@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { handleAnthropicError } from '@/lib/api/anthropic-errors';
 import { jsonError, jsonOk } from '@/lib/api/response';
 import { callCoach } from '@/lib/fase2/call-coach';
+import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { prisma } from '@/lib/prisma';
 import { loadSessionOrResponse, transitionStatus } from '@/lib/session/loader';
 import {
@@ -53,6 +54,13 @@ export async function POST(
   try {
     const coach = await callCoach(state);
     coachText = coach.text;
+    await recordLlmCall({
+      sessionId: session.id,
+      model: coach.model,
+      kind: 'fase2_coach_bootstrap',
+      usage: coach.usage,
+      durationMs: coach.latencyMs,
+    });
   } catch (err) {
     return handleAnthropicError(err, 'phase2/bootstrap');
   }

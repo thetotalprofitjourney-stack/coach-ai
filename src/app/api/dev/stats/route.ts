@@ -31,6 +31,18 @@ interface DailyStatsRow {
   avgDurationSeconds: number | null;
   p50DurationSeconds: number | null;
   p95DurationSeconds: number | null;
+  // Paso 15 — coste API y latencia. Tokens serializados como number
+  // (son BigInt en DB, pero los valores diarios caben de sobra en el
+  // rango seguro de JS). Null si el día no tuvo llm_calls.
+  totalInputTokens: number | null;
+  totalOutputTokens: number | null;
+  totalCacheCreationTokens: number | null;
+  totalCacheReadTokens: number | null;
+  totalCostUsd: number | null;
+  avgCostUsdPerCompletedSession: number | null;
+  avgLatencyMsHaiku: number | null;
+  avgLatencyMsSonnet: number | null;
+  avgLatencyMsOpus: number | null;
 }
 
 interface Totals {
@@ -42,6 +54,15 @@ interface Totals {
   sessionsClosed: number;
   sessionsAbandoned: number;
   reportsDownloaded: number;
+  // Paso 15 — acumulado del rango. `weightedAvgCostUsdPerCompletedSession`
+  // es sumTotalCostUsd / sumSessionsPhase2Completed sobre el rango;
+  // null si el divisor es 0.
+  sumTotalInputTokens: number;
+  sumTotalOutputTokens: number;
+  sumTotalCacheCreationTokens: number;
+  sumTotalCacheReadTokens: number;
+  sumTotalCostUsd: number;
+  weightedAvgCostUsdPerCompletedSession: number | null;
 }
 
 interface StatsResponse {
@@ -114,17 +135,42 @@ export async function GET(req: NextRequest) {
     avgDurationSeconds: r.avgDurationSeconds,
     p50DurationSeconds: r.p50DurationSeconds,
     p95DurationSeconds: r.p95DurationSeconds,
+    totalInputTokens: bigIntToNumber(r.totalInputTokens),
+    totalOutputTokens: bigIntToNumber(r.totalOutputTokens),
+    totalCacheCreationTokens: bigIntToNumber(r.totalCacheCreationTokens),
+    totalCacheReadTokens: bigIntToNumber(r.totalCacheReadTokens),
+    totalCostUsd: r.totalCostUsd,
+    avgCostUsdPerCompletedSession: r.avgCostUsdPerCompletedSession,
+    avgLatencyMsHaiku: r.avgLatencyMsHaiku,
+    avgLatencyMsSonnet: r.avgLatencyMsSonnet,
+    avgLatencyMsOpus: r.avgLatencyMsOpus,
   }));
+
+  const sumTotalCostUsd = sumNullable(formatted, 'totalCostUsd');
+  const sumSessionsPhase2Completed = sum(formatted, 'sessionsPhase2Completed');
+  const weightedAvgCostUsdPerCompletedSession =
+    sumSessionsPhase2Completed > 0
+      ? sumTotalCostUsd / sumSessionsPhase2Completed
+      : null;
 
   const totals: Totals = {
     days: formatted.length,
     sessionsCreated: sum(formatted, 'sessionsCreated'),
     sessionsFormSubmitted: sum(formatted, 'sessionsFormSubmitted'),
     sessionsPhase1Completed: sum(formatted, 'sessionsPhase1Completed'),
-    sessionsPhase2Completed: sum(formatted, 'sessionsPhase2Completed'),
+    sessionsPhase2Completed: sumSessionsPhase2Completed,
     sessionsClosed: sum(formatted, 'sessionsClosed'),
     sessionsAbandoned: sum(formatted, 'sessionsAbandoned'),
     reportsDownloaded: sum(formatted, 'reportsDownloaded'),
+    sumTotalInputTokens: sumNullable(formatted, 'totalInputTokens'),
+    sumTotalOutputTokens: sumNullable(formatted, 'totalOutputTokens'),
+    sumTotalCacheCreationTokens: sumNullable(
+      formatted,
+      'totalCacheCreationTokens',
+    ),
+    sumTotalCacheReadTokens: sumNullable(formatted, 'totalCacheReadTokens'),
+    sumTotalCostUsd,
+    weightedAvgCostUsdPerCompletedSession,
   };
 
   const response: StatsResponse = {
@@ -149,4 +195,21 @@ function sum(rows: DailyStatsRow[], key: Countable): number {
   let n = 0;
   for (const row of rows) n += row[key];
   return n;
+}
+
+type NullableNumeric =
+  | 'totalInputTokens'
+  | 'totalOutputTokens'
+  | 'totalCacheCreationTokens'
+  | 'totalCacheReadTokens'
+  | 'totalCostUsd';
+
+function sumNullable(rows: DailyStatsRow[], key: NullableNumeric): number {
+  let n = 0;
+  for (const row of rows) n += row[key] ?? 0;
+  return n;
+}
+
+function bigIntToNumber(v: bigint | null): number | null {
+  return v === null ? null : Number(v);
 }

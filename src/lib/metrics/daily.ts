@@ -16,6 +16,7 @@
 // ningún campo textual ni identificador de sesión sale de este módulo.
 
 import { prisma } from '@/lib/prisma';
+import { calculateCostUsd } from './pricing';
 
 const ABANDONED_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -35,6 +36,16 @@ export interface DailyStatsReport {
   avgDurationSeconds: number | null;
   p50DurationSeconds: number | null;
   p95DurationSeconds: number | null;
+  // Paso 15 — coste API y latencia. Null si el día no tuvo llm_calls.
+  totalInputTokens: number | null;
+  totalOutputTokens: number | null;
+  totalCacheCreationTokens: number | null;
+  totalCacheReadTokens: number | null;
+  totalCostUsd: number | null;
+  avgCostUsdPerCompletedSession: number | null;
+  avgLatencyMsHaiku: number | null;
+  avgLatencyMsSonnet: number | null;
+  avgLatencyMsOpus: number | null;
 }
 
 export interface CollectDailyStatsOptions {
@@ -174,6 +185,84 @@ export async function collectDailyStats(
     p95_seconds: null,
   };
 
+  // Paso 15 — coste API y latencia. Agregación por modelo con
+  // groupBy (una sola ronda al DB). El coste se calcula row-by-row
+  // en JS con `calculateCostUsd` sobre los totales por modelo, luego
+  // se suma. La latencia media por familia va a tres columnas
+  // separadas (§7.3). Si el día no tiene llm_calls, todos los campos
+  // quedan null — las columnas en daily_stats son nullable.
+  const llmCallsByModel = await prisma.llmCall.groupBy({
+    by: ['model'],
+    where: { createdAt: { gte: dayStart, lt: dayEnd } },
+    _sum: {
+      inputTokens: true,
+      outputTokens: true,
+      cacheCreationInputTokens: true,
+      cacheReadInputTokens: true,
+    },
+    _avg: { durationMs: true },
+  });
+
+  let totalInputTokens: number | null = null;
+  let totalOutputTokens: number | null = null;
+  let totalCacheCreationTokens: number | null = null;
+  let totalCacheReadTokens: number | null = null;
+  let totalCostUsd: number | null = null;
+  let avgLatencyMsHaiku: number | null = null;
+  let avgLatencyMsSonnet: number | null = null;
+  let avgLatencyMsOpus: number | null = null;
+
+  if (llmCallsByModel.length > 0) {
+    totalInputTokens = 0;
+    totalOutputTokens = 0;
+    totalCacheCreationTokens = 0;
+    totalCacheReadTokens = 0;
+    totalCostUsd = 0;
+    for (const row of llmCallsByModel) {
+      const usage = {
+        inputTokens: row._sum.inputTokens ?? 0,
+        outputTokens: row._sum.outputTokens ?? 0,
+        cacheCreationInputTokens: row._sum.cacheCreationInputTokens ?? 0,
+        cacheReadInputTokens: row._sum.cacheReadInputTokens ?? 0,
+      };
+      totalInputTokens += usage.inputTokens;
+      totalOutputTokens += usage.outputTokens;
+      totalCacheCreationTokens += usage.cacheCreationInputTokens;
+      totalCacheReadTokens += usage.cacheReadInputTokens;
+      totalCostUsd += calculateCostUsd(row.model, usage);
+
+      const avgMs = row._avg.durationMs;
+      if (avgMs !== null) {
+        const rounded = Math.round(avgMs);
+        if (row.model.startsWith('haiku-')) avgLatencyMsHaiku = rounded;
+        else if (row.model.startsWith('sonnet-')) avgLatencyMsSonnet = rounded;
+        else if (row.model.startsWith('opus-')) avgLatencyMsOpus = rounded;
+      }
+    }
+  }
+
+  const avgCostUsdPerCompletedSession =
+    totalCostUsd !== null && sessionsPhase2Completed > 0
+      ? totalCostUsd / sessionsPhase2Completed
+      : null;
+
+  const costMetrics = {
+    totalInputTokens: totalInputTokens !== null ? BigInt(totalInputTokens) : null,
+    totalOutputTokens:
+      totalOutputTokens !== null ? BigInt(totalOutputTokens) : null,
+    totalCacheCreationTokens:
+      totalCacheCreationTokens !== null
+        ? BigInt(totalCacheCreationTokens)
+        : null,
+    totalCacheReadTokens:
+      totalCacheReadTokens !== null ? BigInt(totalCacheReadTokens) : null,
+    totalCostUsd,
+    avgCostUsdPerCompletedSession,
+    avgLatencyMsHaiku,
+    avgLatencyMsSonnet,
+    avgLatencyMsOpus,
+  };
+
   await prisma.dailyStats.upsert({
     where: { date: dayStart },
     create: {
@@ -189,6 +278,7 @@ export async function collectDailyStats(
       avgDurationSeconds: duration.avg_seconds,
       p50DurationSeconds: duration.p50_seconds,
       p95DurationSeconds: duration.p95_seconds,
+      ...costMetrics,
     },
     update: {
       sessionsCreated,
@@ -202,6 +292,7 @@ export async function collectDailyStats(
       avgDurationSeconds: duration.avg_seconds,
       p50DurationSeconds: duration.p50_seconds,
       p95DurationSeconds: duration.p95_seconds,
+      ...costMetrics,
     },
   });
 
@@ -221,6 +312,15 @@ export async function collectDailyStats(
     avgDurationSeconds: duration.avg_seconds,
     p50DurationSeconds: duration.p50_seconds,
     p95DurationSeconds: duration.p95_seconds,
+    totalInputTokens,
+    totalOutputTokens,
+    totalCacheCreationTokens,
+    totalCacheReadTokens,
+    totalCostUsd,
+    avgCostUsdPerCompletedSession,
+    avgLatencyMsHaiku,
+    avgLatencyMsSonnet,
+    avgLatencyMsOpus,
   };
 
   console.log(JSON.stringify(report));
