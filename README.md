@@ -105,7 +105,8 @@ del host (Ubuntu, ver `docs/paso-13-deploy.md` §8) invoca
 CEST, dentro de la ventana 3:00-5:00 hora local). La ruta está
 protegida con `Authorization: Bearer $CRON_SECRET` y hace hard delete
 en dos pasos atómicos ($transaction): sesiones en `closed` y
-sesiones abandonadas (`created_at < NOW() - 24h` y `status != 'closed'`).
+sesiones abandonadas (`created_at < NOW() - SESSION_TTL_HOURS h` y
+`status != 'closed'`, default 48h, rango 12-168h).
 La fila en `sessions` arrastra en cascada el resto. Soporta
 `?dryRun=1` para simular sin efectos. Cada ejecución emite un log
 JSON estructurado con `event=cron_cleanup` y contadores, sin PII
@@ -596,7 +597,8 @@ Errores esperados:
 
 Implementa §6.3. Una vez al día, un cron nocturno borra en hard
 delete todas las sesiones `closed` y todas las abandonadas
-(created_at anterior a 24 h y estado distinto de `closed`). El borrado
+(created_at anterior a la ventana `SESSION_TTL_HOURS` — 48 h por
+defecto, clamp 12-168 — y estado distinto de `closed`). El borrado
 de la fila en `sessions` arrastra en cascada `phase1_responses`,
 `phase1_handoff`, `phase2_turns`, `phase2_state` y `final_reports`
 por `onDelete: Cascade`. El hook `deleteReportBlobs` iteraría los

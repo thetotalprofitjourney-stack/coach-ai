@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import type { ResumeLinkData } from '@/lib/session/resume-link';
+import { ResumeLinkNotice } from './ResumeLinkNotice';
+
 type Message = { role: 'admin' | 'user'; content: string };
 
 type Status =
@@ -12,7 +15,13 @@ type Status =
   | { kind: 'synthesizing' }
   | { kind: 'error'; message: string };
 
-export function Phase1Chat({ token }: { token: string }) {
+export function Phase1Chat({
+  token,
+  resumeLink,
+}: {
+  token: string;
+  resumeLink: ResumeLinkData;
+}) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [itemIndex, setItemIndex] = useState(0);
@@ -133,6 +142,8 @@ export function Phase1Chat({ token }: { token: string }) {
           Ítem {Math.min(itemIndex + (done ? 0 : 1), 16)}/16
         </p>
       </header>
+
+      <ResumeLinkNotice url={resumeLink.url} expiresAt={resumeLink.expiresAt} />
 
       <div
         ref={scrollRef}

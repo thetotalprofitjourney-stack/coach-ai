@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formPayloadSchema, type FormPayload } from '@/lib/api/schemas';
+import type { ResumeLinkData } from '@/lib/session/resume-link';
+import { ResumeLinkNotice } from './ResumeLinkNotice';
 
 // Opciones fijas de §2.3. "Otro" activa el input de texto libre; el valor
 // enviado en ese caso es el texto que el usuario escriba.
@@ -24,7 +26,13 @@ type SubmitError =
   | { kind: 'generic'; message: string }
   | null;
 
-export function InitialForm({ token }: { token: string }) {
+export function InitialForm({
+  token,
+  resumeLink,
+}: {
+  token: string;
+  resumeLink: ResumeLinkData;
+}) {
   const router = useRouter();
   const [professionalChoice, setProfessionalChoice] = useState<string>('');
   const [submitError, setSubmitError] = useState<SubmitError>(null);
@@ -157,6 +165,8 @@ export function InitialForm({ token }: { token: string }) {
           dos o tres minutos.
         </p>
       </header>
+
+      <ResumeLinkNotice url={resumeLink.url} expiresAt={resumeLink.expiresAt} />
 
       <form
         noValidate

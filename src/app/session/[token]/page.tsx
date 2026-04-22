@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { sessionTokenSchema } from '@/lib/api/schemas';
+import { buildResumeLinkData } from '@/lib/session/resume-link';
 import { InitialForm } from './InitialForm';
 import { Phase1Chat } from './Phase1Chat';
 import { Phase1Placeholder } from './Phase1Placeholder';
@@ -24,17 +25,26 @@ export default async function SessionPage({
 
   const session = await prisma.session.findUnique({
     where: { id: tokenParse.data },
-    select: { status: true },
+    select: { status: true, createdAt: true },
   });
   if (!session) notFound();
 
+  // Datos del aviso de retomar (URL pública + expiresAt). Se renderiza
+  // en los tres screens de entrada (InitialForm, Phase1Chat,
+  // Phase2Bootstrap). No aparece ni en Phase2Chat (foco de conversación)
+  // ni en ReportView (que tiene su propio timer de 10 min) ni en la
+  // sesión cerrada.
+  const resumeLink = buildResumeLinkData(tokenParse.data, session.createdAt);
+
   switch (session.status) {
     case 'created':
-      return <InitialForm token={tokenParse.data} />;
+      return <InitialForm token={tokenParse.data} resumeLink={resumeLink} />;
     case 'phase1_in_progress':
-      return <Phase1Chat token={tokenParse.data} />;
+      return <Phase1Chat token={tokenParse.data} resumeLink={resumeLink} />;
     case 'phase1_completed':
-      return <Phase2Bootstrap token={tokenParse.data} />;
+      return (
+        <Phase2Bootstrap token={tokenParse.data} resumeLink={resumeLink} />
+      );
     case 'phase2_in_progress': {
       const [turnRows, stateRow] = await Promise.all([
         prisma.phase2Turn.findMany({
