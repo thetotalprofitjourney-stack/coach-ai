@@ -23,7 +23,8 @@ export type BusinessEventName =
   | 'form_submitted'
   | 'phase1_completed'
   | 'phase2_completed'
-  | 'report_downloaded';
+  | 'report_downloaded'
+  | 'report_emailed';
 
 interface BusinessEventPayload {
   [key: string]: string | number | boolean | null | undefined;

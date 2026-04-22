@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { sessionTokenSchema } from '@/lib/api/schemas';
+import { isEmailConfigured } from '@/lib/email/client';
 import { InitialForm } from './InitialForm';
 import { Phase1Chat } from './Phase1Chat';
 import { Phase1Placeholder } from './Phase1Placeholder';
@@ -66,7 +67,11 @@ export default async function SessionPage({
           userName: true,
           createdAt: true,
           finalReport: {
-            select: { reportContent: true, downloadedAt: true },
+            select: {
+              reportContent: true,
+              downloadedAt: true,
+              emailedAt: true,
+            },
           },
         },
       });
@@ -79,6 +84,8 @@ export default async function SessionPage({
           userName={row.userName}
           createdAt={row.createdAt.toISOString()}
           initialDownloadedAt={row.finalReport.downloadedAt?.toISOString() ?? null}
+          initialEmailedAt={row.finalReport.emailedAt?.toISOString() ?? null}
+          emailEnabled={isEmailConfigured()}
         />
       );
     }
