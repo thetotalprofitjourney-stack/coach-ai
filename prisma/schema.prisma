@@ -187,6 +187,37 @@ model LlmCall {
   @@map("llm_calls")
 }
 
+// Sesión de demo gratuita (Fase 2 comprimida, 3 turnos con Haiku) para que
+// el visitante pruebe el tono no-directivo antes de pagar. No va unida a
+// `sessions` para que el cron la purgue por su propio TTL corto (1h) y no
+// viaje por toda la máquina de estados. El historial se guarda como JSON
+// porque el ciclo de vida no necesita las garantías de integridad del
+// chat real y así evitamos una tabla de turnos más.
+model PreviewSession {
+  id         String   @id @default(uuid()) @db.Uuid
+  // Array de { role: 'coach' | 'user', content: string, turnNumber: int }
+  turns      Json     @default("[]")
+  turnsUsed  Int      @default(0) @map("turns_used")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([createdAt])
+  @@map("preview_sessions")
+}
+
+// Cupo diario por hash de IP para evitar que un mismo visitante queme
+// tokens abriendo previews en bucle. El hash se hace con un salt fijo
+// del entorno (§6.4: no PII estable); la fila se renueva cada día UTC.
+model PreviewQuota {
+  ipHash        String   @id @map("ip_hash")
+  resetDate     DateTime @db.Date @map("reset_date")
+  previewCount  Int      @default(0) @map("preview_count")
+  lastPreviewAt DateTime @default(now()) @map("last_preview_at")
+
+  @@index([resetDate])
+  @@map("preview_quotas")
+}
+
 model FinalReport {
   sessionId     String    @id @map("session_id") @db.Uuid
   reportContent Json      @map("report_content") @db.JsonB

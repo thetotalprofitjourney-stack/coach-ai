@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import BuyButton from './_components/buy-button';
+import PreviewButton from './_components/preview-button';
 
 export const metadata: Metadata = {
   title: 'Coach AI — Una sesión para una decisión',
@@ -25,8 +26,9 @@ export default function HomePage() {
             Coaching profesional asistido por IA. Anónimo, acotado, con
             informe descargable al finalizar.
           </p>
-          <div className="mt-10">
+          <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-8">
             <BuyButton />
+            <PreviewButton />
           </div>
         </section>
 

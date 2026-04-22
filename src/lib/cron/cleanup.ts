@@ -26,6 +26,10 @@ import { collectDailyStats, type DailyStatsReport } from '@/lib/metrics/daily';
 import { prisma } from '@/lib/prisma';
 
 const ABANDONED_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Ventana corta para /preview: ni la conversación ni el cupo necesitan
+// sobrevivir más de una hora. El cupo diario por IP vive en
+// `preview_quotas` y se gestiona aparte (TTL de 1 día UTC).
+const PREVIEW_WINDOW_MS = 60 * 60 * 1000;
 
 export interface CleanupReport {
   event: 'cron_cleanup';
@@ -35,6 +39,8 @@ export interface CleanupReport {
   closedCount: number;
   abandonedCount: number;
   blobsDeletedCount: number;
+  previewSessionsDeletedCount: number;
+  previewQuotasDeletedCount: number;
 }
 
 export interface NightlyReport {
@@ -166,6 +172,39 @@ async function runCleanupStage({
     ]);
   }
 
+  // Purga las demos expiradas (> 1 h) y los cupos diarios ya reseteados.
+  // Las dos tablas están desacopladas de `sessions`, así que las tocamos
+  // aquí mismo. No afecta al anonimato: `preview_sessions.turns` sólo
+  // contiene el texto libre del visitante y las respuestas del coach.
+  const previewExpiredThreshold = new Date(now.getTime() - PREVIEW_WINDOW_MS);
+  const quotaExpiredThreshold = new Date(now.getTime() - ABANDONED_WINDOW_MS);
+
+  let previewSessionsDeletedCount = 0;
+  let previewQuotasDeletedCount = 0;
+  if (dryRun) {
+    const [psCount, pqCount] = await Promise.all([
+      prisma.previewSession.count({
+        where: { createdAt: { lt: previewExpiredThreshold } },
+      }),
+      prisma.previewQuota.count({
+        where: { lastPreviewAt: { lt: quotaExpiredThreshold } },
+      }),
+    ]);
+    previewSessionsDeletedCount = psCount;
+    previewQuotasDeletedCount = pqCount;
+  } else {
+    const [psResult, pqResult] = await Promise.all([
+      prisma.previewSession.deleteMany({
+        where: { createdAt: { lt: previewExpiredThreshold } },
+      }),
+      prisma.previewQuota.deleteMany({
+        where: { lastPreviewAt: { lt: quotaExpiredThreshold } },
+      }),
+    ]);
+    previewSessionsDeletedCount = psResult.count;
+    previewQuotasDeletedCount = pqResult.count;
+  }
+
   const report: CleanupReport = {
     event: 'cron_cleanup',
     timestamp: new Date().toISOString(),
@@ -174,6 +213,8 @@ async function runCleanupStage({
     closedCount: closedIds.length,
     abandonedCount: abandonedIds.length,
     blobsDeletedCount,
+    previewSessionsDeletedCount,
+    previewQuotasDeletedCount,
   };
 
   console.log(JSON.stringify(report));
