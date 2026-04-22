@@ -263,11 +263,15 @@ datos más allá del TTL de 24-48h de las sesiones.
 - **Re-ejecuciones del cron.** El upsert es idempotente: re-correr
   el cron en el mismo día UTC pisa los contadores con los mismos
   números. Dos `collect` para la misma fecha no duplican nada.
-- **Coste Anthropic.** No se persiste `usage` (input/output/cache
-  tokens) en ningún modelo: los endpoints descartan la respuesta
-  del SDK tras usarla. Queda fuera del alcance del Paso 14. Para el
-  primer mes post-deploy se estima a ojo con la factura del panel de
-  Anthropic Console + volumen de sesiones de `daily_stats`.
+- **Coste Anthropic.** Implementado en el Paso 15, ver
+  [`paso-15-coste-api.md`](./paso-15-coste-api.md). Se persiste
+  `usage` (input/output/cache tokens) por llamada en una tabla
+  transitoria `llm_calls`, `collectDailyStats` lo agrega a las nueve
+  columnas nuevas de `daily_stats` (`total_*_tokens`, `total_cost_usd`,
+  `avg_cost_usd_per_completed_session`, `avg_latency_ms_*` por
+  familia de modelo) antes del cleanup nocturno, y
+  `/api/dev/stats` + `npm run metrics:show` exponen los campos en los
+  mismos formatos.
 
 ---
 
