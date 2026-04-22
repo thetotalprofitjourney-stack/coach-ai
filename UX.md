@@ -18,7 +18,7 @@ Tras el pago, Stripe redirige al dominio de la aplicación con un `checkout_sess
 
 ## 4. Formulario inicial (`/session/{token}` — status `created`)
 
-La primera vez que el usuario entra a la URL de sesión, el router por status renderiza un formulario de seis campos: nombre (solo de pila), edad, composición familiar, zona geográfica amplia, momento profesional (un dropdown con opciones + un texto libre opcional) y disparador (campo narrativo donde describe qué le ha traído hoy). La validación es con Zod en cliente y servidor. No se pide email, ni apellido, ni teléfono, ni empresa: esa ausencia deliberada funciona como la primera señal fuerte de anonimato real. Tiempo previsto: dos a tres minutos. Como alternativas, el usuario puede abandonar aquí sin enviar el formulario; el cron lo borrará si pasan 24 horas sin actividad. Estado emocional: implicación creciente a medida que escribe el disparador, porque es la primera vez que formula el dilema en palabras.
+La primera vez que el usuario entra a la URL de sesión, el router por status renderiza un formulario de seis campos: nombre (solo de pila), edad, composición familiar, zona geográfica amplia, momento profesional (un dropdown con opciones + un texto libre opcional) y disparador (campo narrativo donde describe qué le ha traído hoy). La validación es con Zod en cliente y servidor. No se pide email, ni apellido, ni teléfono, ni empresa: esa ausencia deliberada funciona como la primera señal fuerte de anonimato real. Tiempo previsto: dos a tres minutos. Encima del formulario aparece el enlace de la propia sesión con un botón de copia y el recordatorio de que puede retomarla en las próximas 48 horas; esto cubre caídas de WiFi, cierres de pestaña y cambios de dispositivo sin romper el modelo anónimo. Como alternativa, el usuario puede abandonar aquí sin enviar el formulario; el cron lo borrará si pasan 48 horas sin actividad. Estado emocional: implicación creciente a medida que escribe el disparador, porque es la primera vez que formula el dilema en palabras.
 
 ## 5. Fase 1 — DISC contextualizado (`phase1_in_progress`)
 
@@ -30,7 +30,7 @@ Entre Fase 1 y Fase 2 hay un estado intermedio en el que el servidor consolida e
 
 ## 7. Fase 2 — Coaching (`phase2_in_progress`)
 
-La pantalla cambia a un chat más sobrio, sin opciones predefinidas: solo campo de texto libre. El coach saluda por el nombre de pila, reconoce implícitamente lo trabajado en Fase 1 y pregunta qué quiere sacar el usuario de la sesión. A partir de ahí, solo preguntas abiertas: no sugiere caminos, no valida emociones, no premia respuestas fáciles. La latencia por turno oscila entre 20 y 60 segundos (Opus 4.7 con thinking de unos 10.000 tokens); es, con diferencia, la fricción más fuerte del recorrido, porque no hay streaming, solo un spinner. Tiempo total: entre 40 y 50 minutos, con un tope aproximado de 50 turnos. El estado emocional oscila entre la incomodidad (preguntas que empujan) y momentos de claridad. Alternativas del usuario: pedir el cierre explícitamente ("creo que hemos terminado…") o cerrar la pestaña, en cuyo caso el cron borrará la sesión si pasan 24 horas sin actividad.
+La pantalla cambia a un chat más sobrio, sin opciones predefinidas: solo campo de texto libre. El coach saluda por el nombre de pila, reconoce implícitamente lo trabajado en Fase 1 y pregunta qué quiere sacar el usuario de la sesión. A partir de ahí, solo preguntas abiertas: no sugiere caminos, no valida emociones, no premia respuestas fáciles. La latencia por turno oscila entre 20 y 60 segundos (Opus 4.7 con thinking de unos 10.000 tokens); es, con diferencia, la fricción más fuerte del recorrido, porque no hay streaming, solo un spinner. Tiempo total: entre 40 y 50 minutos, con un tope aproximado de 50 turnos. El estado emocional oscila entre la incomodidad (preguntas que empujan) y momentos de claridad. Alternativas del usuario: pedir el cierre explícitamente ("creo que hemos terminado…") o cerrar la pestaña, en cuyo caso el cron borrará la sesión si pasan 48 horas sin actividad.
 
 ### Avisos progresivos hacia el cierre
 
@@ -62,7 +62,7 @@ La landing se consume en uno a tres minutos. El pago en Stripe añade uno a dos 
 
 1. Latencia de Opus con thinking entre 20 y 60 segundos por turno en Fase 2, sin streaming: solo spinner. Es el punto con mayor riesgo de abandono.
 2. La transición a Fase 2 es la primera espera larga (60 a 120 segundos) y no hay feedback detallado si algo falla silenciosamente en el bootstrap.
-3. No hay mecanismo de pausar y retomar: un refresh después de 24 horas pierde la sesión por el cron de limpieza.
+3. La ventana de reanudación es de 48 horas (configurable por `SESSION_TTL_HOURS`, rango 12-168): un refresh posterior pierde la sesión por el cron de limpieza. Las pantallas de entrada muestran el enlace con un botón de copia para mitigar caídas de WiFi y cierres accidentales de pestaña.
 4. El formulario inicial no tiene guardado local: un refresh antes de enviar borra lo escrito, incluido el disparador.
 5. Si las dos descargas fallan dentro de los 10 minutos del informe, el usuario pierde acceso al entregable, porque no existe envío por email ni rescate posterior.
 6. El temporizador de 10 minutos post-descarga es duro: una distracción puntual puede significar cierre automático sin aviso adicional.
@@ -70,7 +70,7 @@ La landing se consume en uno a tres minutos. El pago en Stripe añade uno a dos 
 ### Decisiones que el usuario puede tomar
 
 - Cancelar el pago desde Stripe y volver a la landing sin coste.
-- Abandonar en cualquier fase; la sesión se borra pasadas 24 horas de inactividad.
+- Abandonar en cualquier fase y retomar desde el mismo enlace dentro de las 48 horas siguientes; pasado ese plazo la sesión se borra por el cron.
 - En Fase 1, responder con una letra o escribir texto libre para matizar cada ítem.
 - En Fase 2, pedir explícitamente el cierre al coach cuando considere que ha terminado.
 - En el informe, descargar PDF y Word varias veces durante la ventana de 10 minutos.

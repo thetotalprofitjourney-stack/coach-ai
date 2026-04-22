@@ -106,10 +106,13 @@ export default function PrivacyPage() {
           </p>
           <p className="text-base leading-relaxed text-neutral-700">
             Si inicias una sesión y no la completas, tus datos se eliminan
-            automáticamente 24 horas después de su creación. Durante ese
+            automáticamente 48 horas después de su creación. Durante ese
             plazo, el enlace con el identificador técnico permite retomar
-            la sesión; transcurridas las 24 horas, el enlace deja de ser
-            válido y los datos se borran.
+            la sesión desde cualquier dispositivo —es útil si se te cae la
+            conexión o cierras la pestaña por error—; transcurridas las
+            48 horas, el enlace deja de ser válido y los datos se borran.
+            El operador puede ajustar este plazo en el rango de 12 a 168
+            horas sin afectar al modelo de anonimato.
           </p>
         </section>
 
@@ -151,7 +154,7 @@ export default function PrivacyPage() {
             anónimo del sistema de sesión, los datos generados durante la
             propia sesión no pueden vincularse con tu identidad una vez
             borrados, por lo que los derechos sobre esos datos se ejercen
-            en la práctica cerrando la sesión (o esperando las 24 horas si
+            en la práctica cerrando la sesión (o esperando las 48 horas si
             se abandona).
           </p>
           <p className="text-base leading-relaxed text-neutral-700">

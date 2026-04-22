@@ -4,13 +4,21 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { consumeCoachStream } from '@/lib/api/coach-stream-client';
+import type { ResumeLinkData } from '@/lib/session/resume-link';
+import { ResumeLinkNotice } from './ResumeLinkNotice';
 
 // Pantalla puente entre Fase 1 y Fase 2. Al montar dispara
 // /api/session/{token}/phase2/bootstrap (Opus 4.7 + thinking 10k) y
 // consume el stream NDJSON: mientras llegan tokens los pinta en vivo,
 // y al recibir {type:'done'} hace router.refresh() para que el server
 // component pinte Phase2Chat con el primer turno ya persistido.
-export function Phase2Bootstrap({ token }: { token: string }) {
+export function Phase2Bootstrap({
+  token,
+  resumeLink,
+}: {
+  token: string;
+  resumeLink: ResumeLinkData;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [streamingText, setStreamingText] = useState('');
@@ -104,6 +112,12 @@ export function Phase2Bootstrap({ token }: { token: string }) {
       <p className="mt-4 text-neutral-600">
         Estoy revisando tus respuestas. Esto puede tardar un minuto.
       </p>
+      <div className="mt-6 text-left">
+        <ResumeLinkNotice
+          url={resumeLink.url}
+          expiresAt={resumeLink.expiresAt}
+        />
+      </div>
       {error && (
         <p
           role="alert"

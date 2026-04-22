@@ -25,7 +25,32 @@
 import { collectDailyStats, type DailyStatsReport } from '@/lib/metrics/daily';
 import { prisma } from '@/lib/prisma';
 
-const ABANDONED_WINDOW_MS = 24 * 60 * 60 * 1000;
+// TTL de sesiones abandonadas. El enlace de cada sesión es el único
+// identificador y el usuario puede perderlo si se cae el WiFi o cierra
+// la pestaña. Con 48h el visitante tiene dos días reales para retomar,
+// lo que reduce fricción y disputas Stripe. Configurable por env var
+// (SESSION_TTL_HOURS) para que el operador pueda endurecerlo o
+// extenderlo sin redeploy. Límites duros 12h–168h para evitar valores
+// absurdos.
+const DEFAULT_ABANDONED_WINDOW_HOURS = 48;
+const MIN_ABANDONED_WINDOW_HOURS = 12;
+const MAX_ABANDONED_WINDOW_HOURS = 168;
+
+export function abandonedWindowMs(): number {
+  const raw = process.env.SESSION_TTL_HOURS;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  let hours: number;
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    hours = DEFAULT_ABANDONED_WINDOW_HOURS;
+  } else {
+    hours = Math.min(
+      MAX_ABANDONED_WINDOW_HOURS,
+      Math.max(MIN_ABANDONED_WINDOW_HOURS, parsed),
+    );
+  }
+  return hours * 60 * 60 * 1000;
+}
+
 // Ventana corta para /preview: ni la conversación ni el cupo necesitan
 // sobrevivir más de una hora. El cupo diario por IP vive en
 // `preview_quotas` y se gestiona aparte (TTL de 1 día UTC).
@@ -122,7 +147,8 @@ async function runCleanupStage({
   dryRun: boolean;
 }): Promise<CleanupReport> {
   const startedAt = Date.now();
-  const abandonedThreshold = new Date(now.getTime() - ABANDONED_WINDOW_MS);
+  const windowMs = abandonedWindowMs();
+  const abandonedThreshold = new Date(now.getTime() - windowMs);
 
   const [closedRows, abandonedRows] = await Promise.all([
     prisma.session.findMany({
@@ -176,8 +202,11 @@ async function runCleanupStage({
   // Las dos tablas están desacopladas de `sessions`, así que las tocamos
   // aquí mismo. No afecta al anonimato: `preview_sessions.turns` sólo
   // contiene el texto libre del visitante y las respuestas del coach.
+  // El cupo diario vive 24h independientemente de SESSION_TTL_HOURS: un
+  // día UTC es un día UTC sin importar el TTL del producto.
+  const PREVIEW_QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
   const previewExpiredThreshold = new Date(now.getTime() - PREVIEW_WINDOW_MS);
-  const quotaExpiredThreshold = new Date(now.getTime() - ABANDONED_WINDOW_MS);
+  const quotaExpiredThreshold = new Date(now.getTime() - PREVIEW_QUOTA_WINDOW_MS);
 
   let previewSessionsDeletedCount = 0;
   let previewQuotasDeletedCount = 0;
