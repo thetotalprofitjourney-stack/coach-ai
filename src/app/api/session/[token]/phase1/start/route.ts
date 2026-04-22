@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server';
 import { handleAnthropicError } from '@/lib/api/anthropic-errors';
 import { jsonError, jsonOk } from '@/lib/api/response';
 import { callAdministrador } from '@/lib/fase1/call-administrador';
+import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { prisma } from '@/lib/prisma';
 import { loadSessionOrResponse } from '@/lib/session/loader';
 import { reconstructFase1RunState } from '@/lib/session/reconstruct';
@@ -45,6 +46,13 @@ export async function POST(
       state,
       directive: 'presentar',
       lastUserMessage: '',
+    });
+    await recordLlmCall({
+      sessionId: session.id,
+      model: admin.model,
+      kind: 'fase1_admin',
+      usage: admin.usage,
+      durationMs: admin.latencyMs,
     });
     return jsonOk({
       adminMessage: admin.text,
