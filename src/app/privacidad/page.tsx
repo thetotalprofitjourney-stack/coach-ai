@@ -80,6 +80,16 @@ export default function PrivacyPage() {
             procesa cada mensaje bajo acuerdo de confidencialidad y no
             retiene el contenido tras el procesamiento.
           </p>
+          <p className="text-base leading-relaxed text-neutral-700">
+            Al finalizar la sesión puedes solicitar, de forma totalmente
+            opcional, que te enviemos el informe a una dirección de email.
+            Si lo haces, la dirección viaja al proveedor de correo
+            contratado por el operador junto con el informe adjunto y
+            <strong> no se almacena en nuestros servidores</strong>: sólo
+            dejamos una marca técnica anónima para impedir reenvíos
+            múltiples de la misma sesión. Si no rellenas ese campo, no
+            recogemos ningún dato de contacto.
+          </p>
         </section>
 
         <section className="mt-10 space-y-4">

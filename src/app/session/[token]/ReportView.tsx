@@ -20,18 +20,28 @@ function formatRemaining(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+type EmailStatus =
+  | { kind: 'idle' }
+  | { kind: 'sending' }
+  | { kind: 'sent' }
+  | { kind: 'error'; message: string };
+
 export function ReportView({
   token,
   report,
   userName,
   createdAt,
   initialDownloadedAt,
+  initialEmailedAt,
+  emailEnabled,
 }: {
   token: string;
   report: FinalReportContent;
   userName: string | null;
   createdAt: string;
   initialDownloadedAt: string | null;
+  initialEmailedAt: string | null;
+  emailEnabled: boolean;
 }) {
   const router = useRouter();
   const [closing, setClosing] = useState(false);
@@ -42,6 +52,10 @@ export function ReportView({
     return new Date(initialDownloadedAt).getTime() + CLOSE_WINDOW_MS;
   });
   const [now, setNow] = useState<number>(() => Date.now());
+  const [email, setEmail] = useState('');
+  const [emailStatus, setEmailStatus] = useState<EmailStatus>(() =>
+    initialEmailedAt ? { kind: 'sent' } : { kind: 'idle' },
+  );
 
   const hasDownloaded = expiresAt !== null;
   const createdAtDate = new Date(createdAt);
@@ -74,6 +88,40 @@ export function ReportView({
       setError('Error de red durante la descarga.');
     } finally {
       setDownloading(null);
+    }
+  };
+
+  const sendEmail = async () => {
+    const trimmed = email.trim();
+    if (!trimmed || emailStatus.kind === 'sending' || emailStatus.kind === 'sent') {
+      return;
+    }
+    setEmailStatus({ kind: 'sending' });
+    try {
+      const res = await fetch(`/api/session/${token}/report/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        setEmailStatus({
+          kind: 'error',
+          message:
+            body?.error?.message ||
+            'No se pudo enviar el email. Inténtalo de nuevo o descárgalo manualmente.',
+        });
+        return;
+      }
+      setEmailStatus({ kind: 'sent' });
+      setEmail('');
+    } catch {
+      setEmailStatus({
+        kind: 'error',
+        message: 'Error de red. Inténtalo de nuevo.',
+      });
     }
   };
 
@@ -198,6 +246,71 @@ export function ReportView({
             </span>
             .
           </p>
+        )}
+
+        {emailEnabled && (
+          <div className="mt-4 rounded border border-neutral-200 bg-neutral-50 p-4">
+            {emailStatus.kind === 'sent' ? (
+              <p className="text-sm text-neutral-700" role="status">
+                Copia enviada por email. Revisa tu bandeja de entrada (o
+                spam). No guardamos tu dirección: sólo una marca técnica
+                para impedir reenvíos.
+              </p>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void sendEmail();
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <label
+                    htmlFor="report-email"
+                    className="block text-sm font-medium text-neutral-900"
+                  >
+                    Envíame una copia por email (opcional)
+                  </label>
+                  <p className="mt-1 text-xs text-neutral-600">
+                    Tu dirección viaja al proveedor de email y no se guarda
+                    en nuestros servidores. Un solo envío por sesión.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="report-email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="tu@email.com"
+                    disabled={emailStatus.kind === 'sending'}
+                    autoComplete="email"
+                    maxLength={254}
+                    className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 disabled:opacity-60"
+                  />
+                  <button
+                    type="submit"
+                    disabled={
+                      emailStatus.kind === 'sending' ||
+                      email.trim().length === 0
+                    }
+                    className="rounded bg-neutral-900 px-4 py-2 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {emailStatus.kind === 'sending' ? 'Enviando…' : 'Enviarme copia'}
+                  </button>
+                </div>
+                {emailStatus.kind === 'error' && (
+                  <p
+                    role="alert"
+                    className="text-sm text-red-800"
+                  >
+                    {emailStatus.message}
+                  </p>
+                )}
+              </form>
+            )}
+          </div>
         )}
 
         <button
