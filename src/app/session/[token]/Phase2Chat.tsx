@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { consumeCoachStream } from '@/lib/api/coach-stream-client';
+
 type ChatTurn = { role: 'coach' | 'user'; content: string; turnNumber: number };
 
 type Status =
   | { kind: 'ready' }
   | { kind: 'sending' }
+  | { kind: 'streaming' }
   | { kind: 'closing' }
   | { kind: 'error'; message: string };
 
@@ -43,6 +46,7 @@ export function Phase2Chat({
     const trimmed = input.trim();
     if (!trimmed || status.kind !== 'ready') return;
     const userTurnNumber = coachTurnNumber;
+    const streamingCoachTurnNumber = coachTurnNumber + 1;
     setTurns((t) => [
       ...t,
       { role: 'user', content: trimmed, turnNumber: userTurnNumber },
@@ -67,22 +71,97 @@ export function Phase2Chat({
         });
         return;
       }
-      const data = (await res.json()) as {
-        coachMessage: string;
-        turnNumber: number;
-        estimatedLevel: number;
-      };
-      setTurns((t) => [
-        ...t,
-        {
-          role: 'coach',
-          content: data.coachMessage,
-          turnNumber: data.turnNumber,
+
+      // El primer delta será quien inserte el turno streaming del coach;
+      // así el usuario sigue viendo "Pensando…" durante el auxiliar y la
+      // latencia hasta el primer token, y en cuanto Opus empieza a emitir
+      // el UI cambia a modo streaming.
+      let coachPlaceholderInserted = false;
+      let streamingContent = '';
+
+      const streamOk = await consumeCoachStream(res, {
+        onDelta: (delta) => {
+          streamingContent += delta;
+          if (!coachPlaceholderInserted) {
+            coachPlaceholderInserted = true;
+            setStatus({ kind: 'streaming' });
+            setTurns((t) => [
+              ...t,
+              {
+                role: 'coach',
+                content: streamingContent,
+                turnNumber: streamingCoachTurnNumber,
+              },
+            ]);
+          } else {
+            setTurns((t) => {
+              const next = [...t];
+              const last = next[next.length - 1];
+              if (
+                last &&
+                last.role === 'coach' &&
+                last.turnNumber === streamingCoachTurnNumber
+              ) {
+                next[next.length - 1] = { ...last, content: streamingContent };
+              }
+              return next;
+            });
+          }
         },
-      ]);
-      setCoachTurnNumber(data.turnNumber);
-      setLevel(data.estimatedLevel);
-      setStatus({ kind: 'ready' });
+        onDone: (event) => {
+          const turnNumber =
+            typeof event.turnNumber === 'number'
+              ? event.turnNumber
+              : streamingCoachTurnNumber;
+          const estimatedLevel =
+            typeof event.estimatedLevel === 'number'
+              ? event.estimatedLevel
+              : level;
+          // Normaliza el contenido final (trim) y fija el turnNumber
+          // autoritativo del servidor, que puede discrepar del placeholder
+          // si hubiera una race condition (409 del server ya lo cubre).
+          setTurns((t) => {
+            const next = [...t];
+            const last = next[next.length - 1];
+            if (
+              last &&
+              last.role === 'coach' &&
+              last.turnNumber === streamingCoachTurnNumber
+            ) {
+              next[next.length - 1] = {
+                ...last,
+                content: streamingContent.trim(),
+                turnNumber,
+              };
+            }
+            return next;
+          });
+          setCoachTurnNumber(turnNumber);
+          setLevel(estimatedLevel);
+        },
+        onError: ({ message }) => {
+          // Descarta el turno parcial del coach para que el usuario pueda
+          // reintentar con el input intacto (que ya limpiamos arriba — se
+          // puede mejorar, pero no empeora el comportamiento actual).
+          setTurns((t) =>
+            t.filter(
+              (turn) =>
+                !(
+                  turn.role === 'coach' &&
+                  turn.turnNumber === streamingCoachTurnNumber
+                ),
+            ),
+          );
+          setStatus({
+            kind: 'error',
+            message: message || 'No se pudo generar la respuesta del coach.',
+          });
+        },
+      });
+
+      if (streamOk) {
+        setStatus({ kind: 'ready' });
+      }
     } catch {
       setStatus({ kind: 'error', message: 'Error de red.' });
     }
@@ -169,14 +248,22 @@ export function Phase2Chat({
           disabled={status.kind !== 'ready' || input.trim().length === 0}
           className="rounded bg-neutral-900 px-4 py-2 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {status.kind === 'sending' ? 'Pensando…' : 'Enviar'}
+          {status.kind === 'sending'
+            ? 'Pensando…'
+            : status.kind === 'streaming'
+              ? 'Escribiendo…'
+              : 'Enviar'}
         </button>
       </form>
 
       <button
         type="button"
         onClick={close}
-        disabled={status.kind === 'closing' || status.kind === 'sending'}
+        disabled={
+          status.kind === 'closing' ||
+          status.kind === 'sending' ||
+          status.kind === 'streaming'
+        }
         className="mt-3 rounded border border-neutral-300 px-4 py-2 text-sm text-neutral-700 transition hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {status.kind === 'closing'
