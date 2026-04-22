@@ -1,4 +1,4 @@
-import type { TextBlock } from '@anthropic-ai/sdk/resources/messages';
+import type { MessageCreateParamsNonStreaming, TextBlock } from '@anthropic-ai/sdk/resources/messages';
 import { anthropic } from '@/lib/anthropic/client';
 import { MODELS } from '@/lib/anthropic/models';
 import { FASE2_COACH_SYSTEM_PROMPT } from '@/lib/anthropic/prompts/fase2-coach';
@@ -35,7 +35,70 @@ export interface CoachResult {
 export async function callCoach(state: RunState): Promise<CoachResult> {
   const startedAt = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await anthropic.messages.create(buildRequestParams(state));
+
+  const latencyMs = Date.now() - startedAt;
+
+  const text = response.content
+    .filter((block): block is TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+    .trim();
+
+  return {
+    text,
+    model: MODELS.coachFase2,
+    usage: {
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cacheCreationInputTokens: response.usage.cache_creation_input_tokens ?? 0,
+      cacheReadInputTokens: response.usage.cache_read_input_tokens ?? 0,
+    },
+    latencyMs,
+  };
+}
+
+// Variante streaming: emite cada text delta vía `onDelta` según llega el
+// turno del coach. Los bloques de thinking no se emiten (el SDK solo dispara
+// el evento `text` para bloques de texto visible). Cuando el stream termina,
+// devuelve el CoachResult completo con el texto final y el usage oficial del
+// mensaje, de modo que la persistencia y las métricas funcionan igual que
+// en la variante no-streaming.
+export async function callCoachStream(
+  state: RunState,
+  onDelta: (delta: string) => void,
+): Promise<CoachResult> {
+  const startedAt = Date.now();
+
+  const stream = anthropic.messages.stream(buildRequestParams(state));
+  stream.on('text', (delta) => {
+    onDelta(delta);
+  });
+
+  const final = await stream.finalMessage();
+  const latencyMs = Date.now() - startedAt;
+
+  const text = final.content
+    .filter((block): block is TextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+    .trim();
+
+  return {
+    text,
+    model: MODELS.coachFase2,
+    usage: {
+      inputTokens: final.usage.input_tokens,
+      outputTokens: final.usage.output_tokens,
+      cacheCreationInputTokens: final.usage.cache_creation_input_tokens ?? 0,
+      cacheReadInputTokens: final.usage.cache_read_input_tokens ?? 0,
+    },
+    latencyMs,
+  };
+}
+
+function buildRequestParams(state: RunState): MessageCreateParamsNonStreaming {
+  return {
     model: MODELS.coachFase2,
     max_tokens: MAX_TOKENS,
     thinking: {
@@ -59,26 +122,6 @@ export async function callCoach(state: RunState): Promise<CoachResult> {
       },
     ],
     messages: buildMessages(state),
-  });
-
-  const latencyMs = Date.now() - startedAt;
-
-  const text = response.content
-    .filter((block): block is TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('')
-    .trim();
-
-  return {
-    text,
-    model: MODELS.coachFase2,
-    usage: {
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-      cacheCreationInputTokens: response.usage.cache_creation_input_tokens ?? 0,
-      cacheReadInputTokens: response.usage.cache_read_input_tokens ?? 0,
-    },
-    latencyMs,
   };
 }
 

@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server';
 
-import { handleAnthropicError } from '@/lib/api/anthropic-errors';
-import { jsonError, jsonOk } from '@/lib/api/response';
-import { callCoach } from '@/lib/fase2/call-coach';
+import { jsonError } from '@/lib/api/response';
+import { ndjsonStreamResponse } from '@/lib/api/ndjson-stream';
+import { callCoachStream } from '@/lib/fase2/call-coach';
 import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { prisma } from '@/lib/prisma';
 import { loadSessionOrResponse, transitionStatus } from '@/lib/session/loader';
@@ -50,63 +50,85 @@ export async function POST(
 
   const state = reconstructFase2RunState(session, handoff, [], null);
 
-  let coachText: string;
-  try {
-    const coach = await callCoach(state);
-    coachText = coach.text;
+  // Igual que /phase2/message: abrimos stream NDJSON y emitimos tokens según
+  // llegan. Al terminar, creamos Phase2State + primer Phase2Turn y hacemos
+  // la transición de estado en una única transacción. Si algo falla después
+  // de abrir el stream, emitimos {type:'error'}.
+  return ndjsonStreamResponse(async (emit) => {
+    let coachResult;
+    try {
+      coachResult = await callCoachStream(state, (delta) => {
+        emit({ type: 'delta', text: delta });
+      });
+    } catch (err) {
+      console.error('phase2/bootstrap coach stream', err);
+      emit({
+        type: 'error',
+        code: 'INTERNAL',
+        message: 'Fallo generando la primera pregunta del coach.',
+      });
+      return;
+    }
+
     await recordLlmCall({
       sessionId: session.id,
-      model: coach.model,
+      model: coachResult.model,
       kind: 'fase2_coach_bootstrap',
-      usage: coach.usage,
-      durationMs: coach.latencyMs,
+      usage: coachResult.usage,
+      durationMs: coachResult.latencyMs,
     });
-  } catch (err) {
-    return handleAnthropicError(err, 'phase2/bootstrap');
-  }
 
-  try {
-    const transitioned = await prisma.$transaction(async (tx) => {
-      await tx.phase2State.create({
-        data: {
-          sessionId: session.id,
-          currentLevel: 1,
-          hypothesesExplored: [],
-          runningSummary: '',
-          subjectiveTermsResolved: [],
-          subjectiveTermsPending: [...handoff.terminos_subjetivos],
-        },
+    let transitioned = false;
+    try {
+      transitioned = await prisma.$transaction(async (tx) => {
+        await tx.phase2State.create({
+          data: {
+            sessionId: session.id,
+            currentLevel: 1,
+            hypothesesExplored: [],
+            runningSummary: '',
+            subjectiveTermsResolved: [],
+            subjectiveTermsPending: [...handoff.terminos_subjetivos],
+          },
+        });
+        await tx.phase2Turn.create({
+          data: {
+            sessionId: session.id,
+            turnNumber: 1,
+            role: 'coach',
+            content: coachResult.text,
+          },
+        });
+        return transitionStatus(
+          tx,
+          session.id,
+          'phase1_completed',
+          'phase2_in_progress',
+        );
       });
-      await tx.phase2Turn.create({
-        data: {
-          sessionId: session.id,
-          turnNumber: 1,
-          role: 'coach',
-          content: coachText,
-        },
+    } catch (err) {
+      console.error('phase2/bootstrap persistencia', err);
+      emit({
+        type: 'error',
+        code: 'INTERNAL',
+        message: 'No se pudo arrancar Fase 2.',
       });
-      return transitionStatus(
-        tx,
-        session.id,
-        'phase1_completed',
-        'phase2_in_progress',
-      );
-    });
-    if (!transitioned) {
-      return jsonError(
-        'INVALID_STATE',
-        'La sesión cambió de estado durante el arranque.',
-        409,
-      );
+      return;
     }
-  } catch (err) {
-    console.error('phase2/bootstrap persistencia', err);
-    return jsonError('INTERNAL', 'No se pudo arrancar Fase 2.', 500);
-  }
 
-  return jsonOk({
-    coachMessage: coachText,
-    turnNumber: 1,
-    status: 'phase2_in_progress' as const,
+    if (!transitioned) {
+      emit({
+        type: 'error',
+        code: 'INVALID_STATE',
+        message: 'La sesión cambió de estado durante el arranque.',
+      });
+      return;
+    }
+
+    emit({
+      type: 'done',
+      turnNumber: 1,
+      status: 'phase2_in_progress' as const,
+    });
   });
 }

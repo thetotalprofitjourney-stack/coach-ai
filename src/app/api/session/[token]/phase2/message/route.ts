@@ -2,9 +2,10 @@ import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 import { handleAnthropicError } from '@/lib/api/anthropic-errors';
-import { jsonError, jsonOk } from '@/lib/api/response';
+import { jsonError } from '@/lib/api/response';
+import { ndjsonStreamResponse } from '@/lib/api/ndjson-stream';
 import { callAuxiliar } from '@/lib/fase2/call-auxiliar';
-import { callCoach } from '@/lib/fase2/call-coach';
+import { callCoachStream } from '@/lib/fase2/call-coach';
 import type { RunState } from '@/lib/fase2/types';
 import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { prisma } from '@/lib/prisma';
@@ -137,61 +138,80 @@ export async function POST(
     subjectiveTermsPending: newPendingList,
   };
 
-  // Coach: nueva pregunta.
-  let coachText: string;
-  try {
-    const coach = await callCoach(coachState);
-    coachText = coach.text;
-    await recordLlmCall({
-      sessionId: session.id,
-      model: coach.model,
-      kind: 'fase2_coach_turn',
-      usage: coach.usage,
-      durationMs: coach.latencyMs,
-    });
-  } catch (err) {
-    return handleAnthropicError(err, 'phase2/message coach');
-  }
-
   const nextCoachTurnNumber = state.coachTurnNumber + 1;
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.phase2Turn.create({
-        data: {
-          sessionId: session.id,
-          turnNumber: userTurnNumber,
-          role: 'user',
-          content: userMessage,
-        },
+  // A partir de aquí abrimos un stream NDJSON hacia el cliente. Mientras
+  // Opus genera tokens emitimos {type:'delta'}; al terminar persistimos el
+  // turno y el estado en una única transacción y emitimos {type:'done'}.
+  // Cualquier fallo después de abrir el stream viaja como {type:'error'}
+  // en el propio stream — ya respondimos 200 OK con los headers.
+  return ndjsonStreamResponse(async (emit) => {
+    let coachResult;
+    try {
+      coachResult = await callCoachStream(coachState, (delta) => {
+        emit({ type: 'delta', text: delta });
       });
-      await tx.phase2Turn.create({
-        data: {
-          sessionId: session.id,
-          turnNumber: nextCoachTurnNumber,
-          role: 'coach',
-          content: coachText,
-        },
+    } catch (err) {
+      console.error('phase2/message coach stream', err);
+      emit({
+        type: 'error',
+        code: 'INTERNAL',
+        message: 'Fallo generando la respuesta del coach.',
       });
-      await tx.phase2State.update({
-        where: { sessionId: session.id },
-        data: {
-          currentLevel: auxiliarOutput.nivel_estimado,
-          runningSummary: auxiliarOutput.nuevo_resumen,
-          hypothesesExplored: newExplored,
-          subjectiveTermsPending: newPendingList,
-        },
-      });
-    });
-  } catch (err) {
-    console.error('phase2/message persistencia', err);
-    return jsonError('INTERNAL', 'No se pudo persistir el turno.', 500);
-  }
+      return;
+    }
 
-  return jsonOk({
-    coachMessage: coachText,
-    turnNumber: nextCoachTurnNumber,
-    totalTurns: 50,
-    estimatedLevel: auxiliarOutput.nivel_estimado,
+    await recordLlmCall({
+      sessionId: session.id,
+      model: coachResult.model,
+      kind: 'fase2_coach_turn',
+      usage: coachResult.usage,
+      durationMs: coachResult.latencyMs,
+    });
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.phase2Turn.create({
+          data: {
+            sessionId: session.id,
+            turnNumber: userTurnNumber,
+            role: 'user',
+            content: userMessage,
+          },
+        });
+        await tx.phase2Turn.create({
+          data: {
+            sessionId: session.id,
+            turnNumber: nextCoachTurnNumber,
+            role: 'coach',
+            content: coachResult.text,
+          },
+        });
+        await tx.phase2State.update({
+          where: { sessionId: session.id },
+          data: {
+            currentLevel: auxiliarOutput.nivel_estimado,
+            runningSummary: auxiliarOutput.nuevo_resumen,
+            hypothesesExplored: newExplored,
+            subjectiveTermsPending: newPendingList,
+          },
+        });
+      });
+    } catch (err) {
+      console.error('phase2/message persistencia', err);
+      emit({
+        type: 'error',
+        code: 'INTERNAL',
+        message: 'No se pudo persistir el turno.',
+      });
+      return;
+    }
+
+    emit({
+      type: 'done',
+      turnNumber: nextCoachTurnNumber,
+      totalTurns: 50,
+      estimatedLevel: auxiliarOutput.nivel_estimado,
+    });
   });
 }
