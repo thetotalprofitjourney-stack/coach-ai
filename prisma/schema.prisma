@@ -224,6 +224,11 @@ model FinalReport {
   pdfPath       String?   @map("pdf_path")
   docxPath      String?   @map("docx_path")
   downloadedAt  DateTime? @map("downloaded_at")
+  // Marca de envío por email opt-in (§2.4). Se fija cuando el SMTP
+  // devuelve 2xx y la dirección del destinatario nunca se persiste:
+  // sólo queda esta bandera temporal para impedir reenvíos múltiples.
+  // Se borra en cascada con la sesión igual que el resto de campos.
+  emailedAt     DateTime? @map("emailed_at")
   createdAt     DateTime  @default(now()) @map("created_at")
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
