@@ -24,6 +24,7 @@ Dockerfile
 docker-compose*.yml
 
 docs
+!docs/prompt-*.md
 README.md
 
 src/fixtures/handoffs-generados
