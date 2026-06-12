@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import Stripe from 'stripe';
 import { getStripeClient } from '@/lib/stripe/client';
+import { createSessionRow } from '@/lib/session/create';
 import { jsonError, jsonOk } from '@/lib/api/response';
 
 // GET /api/checkout/resolve?cs={checkoutSessionId}
@@ -8,29 +9,29 @@ import { jsonError, jsonOk } from '@/lib/api/response';
 // webhook ya procesó el `checkout.session.completed` correspondiente a
 // este Checkout Session id. Tres respuestas posibles:
 //
-//   200 { token }           → pago confirmado y webhook ya escribió
-//                              `metadata.session_token`. El frontend
-//                              redirige a `/session/{token}`.
-//   202 { pending: true }   → `payment_status === 'paid'` pero la
-//                              Checkout Session aún no tiene metadata
-//                              (carrera con el webhook). El frontend
-//                              repite el polling.
+//   200 { token }           → pago confirmado y token disponible.
+//                              El frontend redirige a `/session/{token}`.
+//   202 { pending: true }   → pago confirmado pero no se pudo crear la
+//                              sesión todavía (fallo transitorio de DB
+//                              o Stripe API). El frontend repite el polling.
 //   400 INVALID_INPUT       → `cs` ausente o `payment_status` distinto
-//                              de `paid` (unpaid / no_payment_required
-//                              en modo subscription, que aquí no aplica).
+//                              de `paid`.
 //   404 SESSION_NOT_FOUND   → Stripe no conoce ese `cs` id.
 //
-// No leemos la tabla `sessions` — el vínculo entre pago y sesión vive
-// sólo en Stripe (§3.1). Sólo consultamos Stripe.
+// Flujo normal: el webhook escribe `metadata.session_token` y esta ruta
+// lo lee (fast path). Si el webhook no ha disparado o ha fallado, esta
+// ruta crea la sesión directamente como fallback (§3.1): el webhook es
+// idempotente por `existingToken`, así que si llega tarde no duplica.
 export async function GET(req: NextRequest) {
   const cs = req.nextUrl.searchParams.get('cs');
   if (!cs) {
     return jsonError('INVALID_INPUT', 'Parámetro `cs` requerido.', 400);
   }
 
+  const stripe = getStripeClient();
+
   let checkoutSession: Stripe.Checkout.Session;
   try {
-    const stripe = getStripeClient();
     checkoutSession = await stripe.checkout.sessions.retrieve(cs);
   } catch (err) {
     if (err instanceof Stripe.errors.StripeInvalidRequestError) {
@@ -48,10 +49,35 @@ export async function GET(req: NextRequest) {
     return jsonError('INVALID_INPUT', 'El pago no se ha completado.', 400);
   }
 
-  const token = checkoutSession.metadata?.session_token;
-  if (typeof token !== 'string' || token.length === 0) {
-    return jsonOk({ pending: true }, 202);
+  // Fast path: el webhook ya escribió el token.
+  const existingToken = checkoutSession.metadata?.session_token;
+  if (typeof existingToken === 'string' && existingToken.length > 0) {
+    return jsonOk({ token: existingToken });
   }
 
-  return jsonOk({ token });
+  // Fallback: webhook aún no ha disparado — crear sesión aquí.
+  try {
+    const { token } = await createSessionRow();
+    await stripe.checkout.sessions.update(cs, {
+      metadata: { session_token: token },
+    });
+    return jsonOk({ token });
+  } catch (err) {
+    // Posible carrera: otro proceso (webhook o poll concurrente) puede
+    // haber escrito el token justo ahora. Re-consultamos antes de rendir.
+    try {
+      const refreshed = await stripe.checkout.sessions.retrieve(cs);
+      const freshToken = refreshed.metadata?.session_token;
+      if (typeof freshToken === 'string' && freshToken.length > 0) {
+        return jsonOk({ token: freshToken });
+      }
+    } catch {
+      // ignorar: el error original es el relevante
+    }
+    console.error('GET /api/checkout/resolve fallback failed', {
+      cs,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return jsonOk({ pending: true }, 202);
+  }
 }
