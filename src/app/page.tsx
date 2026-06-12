@@ -23,18 +23,22 @@ export default function HomePage() {
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-stone-400">
               Coach AI
             </p>
-            <h1 className="mt-5 font-serif text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-              Una sesión para trabajar
-              <br className="hidden sm:inline" /> una decisión difícil
+            <h1 className="mt-5 font-serif text-4xl font-semibold leading-[1.2] tracking-tight sm:text-5xl">
+              Para tomar la decisión
+              <br className="hidden sm:inline" /> que llevas tiempo aplazando
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-stone-300 sm:text-xl">
-              Coaching profesional asistido por IA. Anónimo, sin registro, con
-              informe descargable al finalizar.
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-stone-300">
+              Una sesión de coaching asistida por IA. Anónima, sin registro,
+              con informe descargable al finalizar.
             </p>
             <div className="mt-10 flex flex-col items-start gap-5 sm:flex-row sm:items-center">
               <BuyButton variant="light" />
               <PreviewButton variant="light" />
             </div>
+            {/* Señal de privacidad justo debajo de los CTAs */}
+            <p className="mt-5 text-xs text-stone-500">
+              Sin cuenta · Sin email · Los datos desaparecen al cerrar la sesión
+            </p>
           </div>
         </section>
 
@@ -47,9 +51,13 @@ export default function HomePage() {
             No es terapia. No es un chatbot. Es un coach que solo pregunta.
           </p>
           <p className="mt-5 max-w-2xl text-base leading-relaxed text-neutral-600 sm:text-lg">
-            No sugiere caminos, no valida emocionalmente, no alaba la respuesta
-            fácil. Su único instrumento es la pregunta. La claridad y la decisión
-            salen de ti.
+            No hay juicios. No hay consejos que no pediste. No hay registro de
+            lo que digas. Solo preguntas que te ayudan a llegar a lo que ya
+            sabes.
+          </p>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-neutral-600 sm:text-lg">
+            La conclusión, sea cual sea, sale de ti. El coach no la conoce de
+            antemano.
           </p>
         </section>
 
@@ -60,49 +68,35 @@ export default function HomePage() {
               Cómo funciona
             </p>
             <ol className="mt-10 space-y-10">
-              <li className="flex gap-6">
-                <span className="flex-none select-none text-3xl font-light text-neutral-200">
-                  01
-                </span>
-                <div>
-                  <h3 className="text-base font-semibold text-neutral-900">
-                    Formulario breve
-                  </h3>
-                  <p className="mt-2 leading-relaxed text-neutral-600">
-                    Dos o tres minutos con tus datos básicos y el dilema o
-                    decisión que quieres trabajar hoy.
-                  </p>
-                </div>
-              </li>
-              <li className="flex gap-6">
-                <span className="flex-none select-none text-3xl font-light text-neutral-200">
-                  02
-                </span>
-                <div>
-                  <h3 className="text-base font-semibold text-neutral-900">
-                    Cuestionario y sesión de coaching
-                  </h3>
-                  <p className="mt-2 leading-relaxed text-neutral-600">
-                    Una fase inicial conversacional de 15 a 20 minutos para
-                    calibrar tu perfil y, a continuación, una sesión de
-                    coaching de 40 a 50 minutos sobre tu decisión.
-                  </p>
-                </div>
-              </li>
-              <li className="flex gap-6">
-                <span className="flex-none select-none text-3xl font-light text-neutral-200">
-                  03
-                </span>
-                <div>
-                  <h3 className="text-base font-semibold text-neutral-900">
-                    Informe final
-                  </h3>
-                  <p className="mt-2 leading-relaxed text-neutral-600">
-                    Al cerrar, descargas un informe estructurado en PDF y Word
-                    con tu objetivo, razones, decisión y primer paso.
-                  </p>
-                </div>
-              </li>
+              {[
+                {
+                  n: '01',
+                  title: 'Cuéntame tu situación',
+                  body: 'Un formulario de dos o tres minutos: tus datos básicos y la decisión o dilema que quieres trabajar hoy.',
+                },
+                {
+                  n: '02',
+                  title: 'Cuestionario breve y sesión de coaching',
+                  body: 'Unas preguntas de perfil (15-20 min) para que el coach te entienda bien, seguidas de una sesión de coaching de 40-50 minutos sobre tu decisión.',
+                },
+                {
+                  n: '03',
+                  title: 'Tu informe',
+                  body: 'Al cerrar, descargas un informe con lo que has dicho: tu objetivo, las razones de peso, la decisión y el primer paso. En PDF y Word.',
+                },
+              ].map(({ n, title, body }) => (
+                <li key={n} className="flex gap-6">
+                  <span className="mt-0.5 flex-none select-none text-3xl font-light leading-none text-neutral-200">
+                    {n}
+                  </span>
+                  <div>
+                    <h3 className="text-base font-semibold text-neutral-900">
+                      {title}
+                    </h3>
+                    <p className="mt-2 leading-relaxed text-neutral-600">{body}</p>
+                  </div>
+                </li>
+              ))}
             </ol>
           </div>
         </section>
@@ -116,20 +110,20 @@ export default function HomePage() {
             <ul className="mt-10 grid gap-4 sm:grid-cols-2">
               {[
                 {
-                  title: 'Informe estructurado',
-                  body: 'Objetivo, razones, decisión y primer paso. Descargable en PDF y Word.',
+                  title: 'Nadie sabe que estás aquí',
+                  body: 'Sin cuenta, sin email, sin historial. Anónimo por diseño.',
                 },
                 {
-                  title: 'Anonimato total',
-                  body: 'Sin cuenta, sin email. Tus datos no se conservan más allá de la sesión.',
+                  title: 'Un informe que es tuyo',
+                  body: 'Lo que dijiste, ordenado. Tu objetivo, tus razones, tu decisión, tu primer paso. En PDF y Word.',
                 },
                 {
-                  title: 'Una sola sesión',
-                  body: 'Sin suscripción, sin seguimiento, sin próxima cita.',
+                  title: 'Sin compromisos ni seguimiento',
+                  body: 'Una sesión, sin suscripción, sin próxima cita, sin newsletter.',
                 },
                 {
-                  title: 'Privacidad por diseño',
-                  body: 'Todo se elimina cuando cierras. Nada queda en el servidor.',
+                  title: 'Lo que dijiste, solo para ti',
+                  body: 'Los datos se eliminan al cerrar la sesión. Nada queda en el servidor.',
                 },
               ].map(({ title, body }) => (
                 <li
@@ -137,7 +131,7 @@ export default function HomePage() {
                   className="rounded-xl border border-neutral-200 bg-white p-5"
                 >
                   <p className="font-semibold text-neutral-900">{title}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+                  <p className="mt-1.5 text-sm leading-relaxed text-neutral-600">
                     {body}
                   </p>
                 </li>
