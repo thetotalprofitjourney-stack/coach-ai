@@ -20,16 +20,17 @@ export async function POST(
   if (loaded instanceof Response) return loaded;
   const { session } = loaded;
 
-  const [lastCoachTurn, coachTurnsCount] = await Promise.all([
-    prisma.phase2Turn.findFirst({
+  const [coachTurns, coachTurnsCount] = await Promise.all([
+    prisma.phase2Turn.findMany({
       where: { sessionId: session.id, role: 'coach' },
       orderBy: { turnNumber: 'desc' },
+      select: { content: true },
     }),
     prisma.phase2Turn.count({
       where: { sessionId: session.id, role: 'coach' },
     }),
   ]);
-  if (!lastCoachTurn) {
+  if (coachTurns.length === 0) {
     return jsonError(
       'INVALID_STATE',
       'No hay turnos del coach en esta sesión.',
@@ -37,7 +38,18 @@ export async function POST(
     );
   }
 
-  const report = parseFinalReport(lastCoachTurn.content);
+  // Busca el turno más reciente que se parsee con los 11 bloques. Si el
+  // usuario continuó conversando después del informe, el último turno puede
+  // ser una respuesta conversacional sin estructura; al escanear hacia atrás
+  // recuperamos el turno que contiene el informe real.
+  let report = parseFinalReport(coachTurns[0].content);
+  for (const turn of coachTurns) {
+    const candidate = parseFinalReport(turn.content);
+    if (candidate.parseStatus === 'parsed') {
+      report = candidate;
+      break;
+    }
+  }
 
   try {
     const transitioned = await prisma.$transaction(async (tx) => {
