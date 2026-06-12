@@ -15,14 +15,14 @@ export const fixtureLucia: Fase1Fixture = {
   slug: 'lucia',
   label: 'Lucía Herrero (C-D, fuga de consultoría)',
   formulario: {
-    nombre: 'Lucía Herrero',
+    alias: 'Lucía Herrero',
     edad: 28,
     estado_civil_y_familia: 'Soltera, sin hijos. Vivo sola en alquiler.',
-    zona_geografica: 'Bilbao.',
     momento_profesional:
       'Consultora en una firma Big4, llevo 3 años. Tengo un ahorro acumulado equivalente a unos 8 meses de mis gastos actuales.',
     disparador:
       'Tengo claro que no quiero seguir en consultoría, pero no sé qué sí quiero. Llevo mucho tiempo dándole vueltas y no avanzo. Necesito decidir algo ya.',
+    reto_dominio: 'general',
   },
   respuestas: [
     { letter: 'D', freeText: 'Aprovecharía para optimizar lo que ya funciona. Siempre hay margen si miras los procesos.' },

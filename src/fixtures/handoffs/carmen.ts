@@ -8,11 +8,10 @@ export const carmenFixture: HandoffFixture = {
   label: 'Carmen Velasco — S-D, sucesión',
   handoff: {
     contexto_personal: {
-      nombre: 'Carmen Velasco',
+      alias: 'Carmen Velasco',
       edad: 62,
       estado_civil_y_familia:
         'Viuda (marido fallecido hace 4 años). Dos hijos adultos: Pablo, 36 años, trabaja en la empresa familiar como responsable comercial desde hace 10 años; Marta, 33 años, médico, ejerce en otra ciudad y nunca ha querido incorporarse al negocio',
-      zona_geografica: 'Valencia',
       momento_profesional:
         'Fundadora y directora de una empresa industrial mediana (55 empleados). Al frente desde hace 30 años',
     },

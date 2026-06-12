@@ -9,15 +9,15 @@ export const fixtureCarmen: Fase1Fixture = {
   slug: 'carmen',
   label: 'Carmen Velasco (S-D, sucesión empresa familiar)',
   formulario: {
-    nombre: 'Carmen Velasco',
+    alias: 'Carmen Velasco',
     edad: 62,
     estado_civil_y_familia:
       'Viuda desde hace 4 años. Dos hijos adultos: Pablo (36), trabaja en la empresa familiar desde hace 10 años como responsable comercial; Marta (33), médico, ejerce en otra ciudad y nunca ha querido incorporarse al negocio.',
-    zona_geografica: 'Valencia.',
     momento_profesional:
       'Fundadora y directora de una empresa industrial mediana, 55 empleados. Al frente desde hace 30 años.',
     disparador:
       'Quiero jubilarme pero no tengo claro qué hacer con la empresa. Hay tres opciones que me rondan — pasarla al que está dentro, venderla, o incluso cerrarla. Ninguna me acaba de convencer del todo.',
+    reto_dominio: 'general',
   },
   respuestas: [
     { letter: 'C' },

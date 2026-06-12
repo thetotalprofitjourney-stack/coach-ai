@@ -2,7 +2,7 @@ import type { TextBlock } from '@anthropic-ai/sdk/resources/messages';
 import { anthropic } from '@/lib/anthropic/client';
 import { MODELS } from '@/lib/anthropic/models';
 import { getFase1AdministradorSystemPrompt } from '@/lib/anthropic/prompts/fase1-administrador';
-import { BANCO_ITEMS_TEXT, formatItemForPrompt, getItemByIndex } from './banco';
+import { BANCO_ITEMS_TEXT, formatItemForPrompt, getFilteredItemByIndex, getTotalItems } from './banco';
 import type { Fase1RunState } from './types';
 
 // Haiku 4.5, sin thinking (el administrador es mecánico). max_tokens
@@ -93,13 +93,16 @@ export async function callAdministrador(
 function buildUserMessage(input: CallAdministradorInput): string {
   const { state, directive, lastUserMessage } = input;
 
+  const retoDominio = state.formulario.reto_dominio;
+  const totalItems = getTotalItems(retoDominio);
+
   // Ítem a exhibir: el currentItemIndex para presentar/repreguntar; en
-  // despedida reutilizamos el último (ítem 16, index 15) como referencia.
+  // despedida reutilizamos el último ítem como referencia.
   const itemIndex =
     directive === 'despedir'
-      ? Math.min(state.currentItemIndex, 15)
+      ? Math.min(state.currentItemIndex, totalItems - 1)
       : state.currentItemIndex;
-  const item = getItemByIndex(itemIndex);
+  const item = getFilteredItemByIndex(itemIndex, retoDominio);
 
   const recent = state.turns.slice(-MAX_HISTORY_PAIRS * 2);
   const historial =
@@ -114,7 +117,7 @@ function buildUserMessage(input: CallAdministradorInput): string {
 
   return [
     `DIRECTIVA: ${directive}`,
-    `NÚMERO DE ÍTEM: ${itemIndex + 1} de 16`,
+    `NÚMERO DE ÍTEM: ${itemIndex + 1} de ${totalItems}`,
     `ÍTEM ACTUAL:\n${formatItemForPrompt(item)}`,
     `HISTORIAL RECIENTE:\n${historial}`,
     `MENSAJE DEL USUARIO: ${lastUserMessage.length > 0 ? lastUserMessage : '(inicio)'}`,

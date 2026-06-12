@@ -8,11 +8,10 @@ export const tomasFixture: HandoffFixture = {
   label: 'Tomás Iriarte — I-D, mudanza familiar',
   handoff: {
     contexto_personal: {
-      nombre: 'Tomás Iriarte',
+      alias: 'Tomás Iriarte',
       edad: 35,
       estado_civil_y_familia:
         'Casado con María desde hace 9 años. Dos hijas (5 años y 2 años). María es profesional en activo con carrera propia consolidada en el ámbito jurídico',
-      zona_geografica: 'San Sebastián',
       momento_profesional:
         'Gerente en una empresa farmacéutica española, 8 años en el sector. Recientemente ha recibido una oferta sustancial de una multinacional con sede en Zúrich',
     },

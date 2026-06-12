@@ -13,15 +13,15 @@ export const fixtureElena: Fase1Fixture = {
   slug: 'elena',
   label: 'Elena Roig (I-S, replanteamiento existencial)',
   formulario: {
-    nombre: 'Elena Roig',
+    alias: 'Elena Roig',
     edad: 48,
     estado_civil_y_familia:
       'Casada desde hace 22 años. Dos hijos: chica de 16 años y chico de 13.',
-    zona_geografica: 'Madrid.',
     momento_profesional:
       'Llevo 18 años sin trabajar fuera de casa. Antes fui correctora y editora junior en una pequeña editorial. Desde que nació la mayor me dediqué a los hijos y a la casa.',
     disparador:
       'Siento que esta vida no es la que quiero. Quiero cambiar, aunque todavía no sé exactamente qué ni cómo. Sólo sé que no puedo seguir así mucho más tiempo.',
+    reto_dominio: 'general',
   },
   respuestas: [
     { letter: 'B', freeText: 'Depende, no lo tengo claro. Quizá acercarme a gente que me importa.' },

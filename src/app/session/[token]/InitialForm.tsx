@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react'; // useRef kept for hydratedRef
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -14,10 +14,10 @@ function draftKey(token: string) {
 }
 
 type DraftShape = Partial<{
-  name: string;
+  alias: string;
   age: number | '';
   familyContext: string;
-  location: string;
+  retoDominio: string;
   professionalMoment: string;
   trigger: string;
 }>;
@@ -62,7 +62,22 @@ const PROFESSIONAL_OPTIONS = [
   'Otro',
 ] as const;
 
+const FAMILY_OPTIONS = [
+  'Soltero/a',
+  'En pareja',
+  'Casado/a o unión estable',
+  'Familia con hijos',
+  'Otra situación',
+] as const;
+
+const RETO_OPTIONS = [
+  { value: 'personal', label: 'Personal', desc: 'Relaciones, vida personal, bienestar' },
+  { value: 'profesional', label: 'Profesional', desc: 'Trabajo, carrera, negocio' },
+  { value: 'general', label: 'General', desc: 'Afecta a todo (p. ej. emprender)' },
+] as const;
+
 const OTHER = 'Otro';
+const OTHER_FAMILY = 'Otra situación';
 
 type SubmitError =
   | { kind: 'not_found' }
@@ -78,6 +93,7 @@ export function InitialForm({
 }) {
   const router = useRouter();
   const [professionalChoice, setProfessionalChoice] = useState<string>('');
+  const [familyChoice, setFamilyChoice] = useState<string>('');
   const [submitError, setSubmitError] = useState<SubmitError>(null);
 
   const {
@@ -92,18 +108,16 @@ export function InitialForm({
     resolver: zodResolver(formPayloadSchema),
     mode: 'onSubmit',
     defaultValues: {
-      name: '',
+      alias: '',
       familyContext: '',
-      location: '',
+      retoDominio: undefined,
       professionalMoment: '',
       trigger: '',
     },
   });
 
-  // Foco automático en el primer campo al montar para que el usuario pueda
-  // empezar a escribir sin tener que hacer clic en el input.
   useEffect(() => {
-    setFocus('name');
+    setFocus('alias');
   }, [setFocus]);
 
   const hydratedRef = useRef(false);
@@ -112,11 +126,22 @@ export function InitialForm({
     hydratedRef.current = true;
     const draft = readDraft(token);
     if (!draft) return;
-    if (typeof draft.name === 'string') setValue('name', draft.name);
+    if (typeof draft.alias === 'string') setValue('alias', draft.alias);
     if (typeof draft.age === 'number') setValue('age', draft.age);
-    if (typeof draft.familyContext === 'string')
+    if (typeof draft.familyContext === 'string') {
       setValue('familyContext', draft.familyContext);
-    if (typeof draft.location === 'string') setValue('location', draft.location);
+      const knownFamily = (FAMILY_OPTIONS as readonly string[]).includes(draft.familyContext);
+      setFamilyChoice(
+        draft.familyContext === '' ? '' : knownFamily ? draft.familyContext : OTHER_FAMILY,
+      );
+    }
+    if (
+      draft.retoDominio === 'personal' ||
+      draft.retoDominio === 'profesional' ||
+      draft.retoDominio === 'general'
+    ) {
+      setValue('retoDominio', draft.retoDominio);
+    }
     if (typeof draft.professionalMoment === 'string') {
       setValue('professionalMoment', draft.professionalMoment);
       const closed = (PROFESSIONAL_OPTIONS as readonly string[]).includes(
@@ -137,10 +162,10 @@ export function InitialForm({
     const subscription = watch((values) => {
       const id = setTimeout(() => {
         writeDraft(token, {
-          name: values.name ?? '',
+          alias: values.alias ?? '',
           age: typeof values.age === 'number' ? values.age : '',
           familyContext: values.familyContext ?? '',
-          location: values.location ?? '',
+          retoDominio: values.retoDominio ?? '',
           professionalMoment: values.professionalMoment ?? '',
           trigger: values.trigger ?? '',
         });
@@ -150,11 +175,19 @@ export function InitialForm({
     return () => subscription.unsubscribe();
   }, [token, watch]);
 
-  const isOther = professionalChoice === OTHER;
+  const isOtherProfessional = professionalChoice === OTHER;
+  const isOtherFamily = familyChoice === OTHER_FAMILY;
 
-  const onChoiceChange = (value: string) => {
+  const onProfessionalChoice = (value: string) => {
     setProfessionalChoice(value);
     setValue('professionalMoment', value === OTHER ? '' : value, {
+      shouldValidate: false,
+    });
+  };
+
+  const onFamilyChoice = (value: string) => {
+    setFamilyChoice(value);
+    setValue('familyContext', value === OTHER_FAMILY ? '' : value, {
       shouldValidate: false,
     });
   };
@@ -239,9 +272,10 @@ export function InitialForm({
     );
   }
 
-  // Clases base para campos de texto
   const fieldInput =
     'mt-1.5 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:ring-offset-0 aria-[invalid=true]:border-red-400 aria-[invalid=true]:ring-red-400 transition-shadow';
+
+  const retoDominio = watch('retoDominio');
 
   return (
     <main className="mx-auto max-w-lg px-5 py-8">
@@ -259,30 +293,29 @@ export function InitialForm({
         </p>
       </header>
 
-      {/* Aviso de enlace — fuera del formulario, visualmente separado */}
       <ResumeLinkNotice url={resumeLink.url} expiresAt={resumeLink.expiresAt} />
 
-      {/* Formulario */}
       <form noValidate onSubmit={handleSubmit(onSubmit)} className="space-y-5">
 
-        {/* Fila 1: Nombre + Edad */}
+        {/* Fila 1: Alias + Edad */}
         <div className="grid grid-cols-[1fr_5rem] gap-4">
           <div>
-            <label htmlFor="name" className={labelClass}>
-              Nombre
+            <label htmlFor="alias" className={labelClass}>
+              ¿Cómo quieres que te llamen?
             </label>
             <input
-              id="name"
+              id="alias"
               type="text"
-              autoComplete="given-name"
+              placeholder="Nombre o alias"
+              autoComplete="off"
               className={fieldInput}
-              aria-invalid={!!errors.name}
-              aria-describedby={errors.name ? 'name-error' : undefined}
-              {...register('name')}
+              aria-invalid={!!errors.alias}
+              aria-describedby={errors.alias ? 'alias-error' : undefined}
+              {...register('alias')}
             />
-            {errors.name && (
-              <p id="name-error" className={errorClass}>
-                {errors.name.message}
+            {errors.alias && (
+              <p id="alias-error" className={errorClass}>
+                {errors.alias.message}
               </p>
             )}
           </div>
@@ -309,67 +342,62 @@ export function InitialForm({
           </div>
         </div>
 
-        {/* Fila 2: Situación familiar + Ciudad */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="familyContext" className={labelClass}>
-              Situación familiar
-            </label>
-            <input
-              id="familyContext"
-              type="text"
-              placeholder='p. ej. "casado, dos hijos"'
-              className={fieldInput}
-              aria-invalid={!!errors.familyContext}
-              aria-describedby={errors.familyContext ? 'familyContext-error' : undefined}
-              {...register('familyContext')}
-            />
-            {errors.familyContext && (
-              <p id="familyContext-error" className={errorClass}>
-                {errors.familyContext.message}
-              </p>
-            )}
+        {/* Ámbito del reto */}
+        <div>
+          <p className={labelClass} id="reto-label">
+            ¿Qué ámbito tiene tu reto?
+          </p>
+          <input type="hidden" {...register('retoDominio')} />
+          <div className="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="reto-label">
+            {RETO_OPTIONS.map((opt) => {
+              const selected = retoDominio === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setValue('retoDominio', opt.value, { shouldValidate: false })}
+                  aria-pressed={selected}
+                  className={
+                    selected
+                      ? 'flex flex-col items-start rounded-xl bg-stone-900 px-4 py-2.5 text-left transition'
+                      : 'flex flex-col items-start rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-left transition hover:border-stone-400 hover:bg-stone-50'
+                  }
+                >
+                  <span className={`text-sm font-medium ${selected ? 'text-white' : 'text-neutral-800'}`}>
+                    {opt.label}
+                  </span>
+                  <span className={`text-xs ${selected ? 'text-stone-300' : 'text-neutral-400'}`}>
+                    {opt.desc}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <label htmlFor="location" className={labelClass}>
-              Ciudad o área
-            </label>
-            <input
-              id="location"
-              type="text"
-              autoComplete="address-level2"
-              className={fieldInput}
-              aria-invalid={!!errors.location}
-              aria-describedby={errors.location ? 'location-error' : undefined}
-              {...register('location')}
-            />
-            {errors.location && (
-              <p id="location-error" className={errorClass}>
-                {errors.location.message}
-              </p>
-            )}
-          </div>
+          {errors.retoDominio && (
+            <p id="reto-error" className={errorClass}>
+              {errors.retoDominio.message}
+            </p>
+          )}
         </div>
 
-        {/* Momento profesional — chips */}
+        {/* Situación familiar — chips */}
         <div>
-          <p className={labelClass} id="prof-label">
-            Momento profesional
+          <p className={labelClass} id="family-label">
+            Situación familiar
           </p>
-          {/* Campo oculto que react-hook-form valida */}
-          <input type="hidden" {...register('professionalMoment')} />
+          <input type="hidden" {...register('familyContext')} />
           <div
             className="mt-2 flex flex-wrap gap-2"
             role="group"
-            aria-labelledby="prof-label"
+            aria-labelledby="family-label"
           >
-            {PROFESSIONAL_OPTIONS.map((opt) => {
-              const selected = professionalChoice === opt;
+            {FAMILY_OPTIONS.map((opt) => {
+              const selected = familyChoice === opt;
               return (
                 <button
                   key={opt}
                   type="button"
-                  onClick={() => onChoiceChange(opt)}
+                  onClick={() => onFamilyChoice(opt)}
                   aria-pressed={selected}
                   className={
                     selected
@@ -382,7 +410,56 @@ export function InitialForm({
               );
             })}
           </div>
-          {isOther && (
+          {isOtherFamily && (
+            <input
+              id="familyContextOther"
+              type="text"
+              placeholder="Describe brevemente tu situación familiar"
+              className={`${fieldInput} mt-3`}
+              aria-label="Describe brevemente tu situación familiar"
+              aria-invalid={!!errors.familyContext}
+              aria-describedby={errors.familyContext ? 'familyContext-error' : undefined}
+              {...register('familyContext')}
+            />
+          )}
+          {errors.familyContext && (
+            <p id="familyContext-error" className={errorClass}>
+              {errors.familyContext.message}
+            </p>
+          )}
+        </div>
+
+        {/* Momento profesional — chips */}
+        <div>
+          <p className={labelClass} id="prof-label">
+            Momento profesional
+          </p>
+          <input type="hidden" {...register('professionalMoment')} />
+          <div
+            className="mt-2 flex flex-wrap gap-2"
+            role="group"
+            aria-labelledby="prof-label"
+          >
+            {PROFESSIONAL_OPTIONS.map((opt) => {
+              const selected = professionalChoice === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => onProfessionalChoice(opt)}
+                  aria-pressed={selected}
+                  className={
+                    selected
+                      ? 'rounded-full bg-stone-900 px-4 py-1.5 text-sm font-medium text-white transition'
+                      : 'rounded-full border border-neutral-200 bg-white px-4 py-1.5 text-sm text-neutral-700 transition hover:border-stone-400 hover:bg-stone-50'
+                  }
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+          {isOtherProfessional && (
             <input
               id="professionalMomentOther"
               type="text"

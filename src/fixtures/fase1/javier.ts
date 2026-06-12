@@ -15,16 +15,15 @@ export const fixtureJavier: Fase1Fixture = {
   slug: 'javier',
   label: 'Javier Ponce (D-C, CEO en 4 años)',
   formulario: {
-    nombre: 'Javier Ponce',
+    alias: 'Javier Ponce',
     edad: 44,
     estado_civil_y_familia:
       'Casado desde hace 13 años. Dos hijos: chica de 10 años, chico de 7.',
-    zona_geografica:
-      'Madrid, con desplazamientos internacionales el 60-70% del tiempo.',
     momento_profesional:
       'COO regional de una multinacional tecnológica. 18 años de trayectoria con tres cambios de empresa para subir peldaño.',
     disparador:
       'Quiero llegar a CEO en los próximos 4 años. Necesito saber qué tengo que hacer para conseguirlo y, sobre todo, qué estoy haciendo mal ahora mismo que esté ralentizando el camino.',
+    reto_dominio: 'general',
   },
   respuestas: [
     { letter: 'A', freeText: 'La calma dura poco si buscas el siguiente nivel.' },

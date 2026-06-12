@@ -28,29 +28,29 @@ export function formularioFromSession(session: Session): Fase1FormularioInicial 
     userName,
     userAge,
     userFamilyContext,
-    userLocation,
     userProfessionalMoment,
     userTrigger,
+    userRetoDominio,
   } = session;
   if (
     !userName ||
     userAge === null ||
     !userFamilyContext ||
-    !userLocation ||
     !userProfessionalMoment ||
-    !userTrigger
+    !userTrigger ||
+    !userRetoDominio
   ) {
     throw new Error(
       `session ${session.id}: datos del formulario incompletos en estado ${session.status}`,
     );
   }
   return {
-    nombre: userName,
+    alias: userName,
     edad: userAge,
     estado_civil_y_familia: userFamilyContext,
-    zona_geografica: userLocation,
     momento_profesional: userProfessionalMoment,
     disparador: userTrigger,
+    reto_dominio: userRetoDominio as Fase1FormularioInicial['reto_dominio'],
   };
 }
 

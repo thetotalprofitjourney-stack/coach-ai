@@ -6,6 +6,7 @@ import { callSintesis } from '@/lib/fase1/call-sintesis';
 import { logBusinessEvent } from '@/lib/metrics/events';
 import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { prisma } from '@/lib/prisma';
+import { getTotalItems } from '@/lib/fase1/banco';
 import { loadSessionOrResponse, transitionStatus } from '@/lib/session/loader';
 import { reconstructFase1RunState } from '@/lib/session/reconstruct';
 
@@ -30,15 +31,15 @@ export async function POST(
   const responses = await prisma.phase1Response.findMany({
     where: { sessionId: session.id },
   });
-  if (responses.length < 16) {
+  const state = reconstructFase1RunState(session, responses);
+  const totalItems = getTotalItems(state.formulario.reto_dominio);
+  if (responses.length < totalItems) {
     return jsonError(
       'INVALID_STATE',
-      `Faltan respuestas (${responses.length}/16). No se puede sintetizar aún.`,
+      `Faltan respuestas (${responses.length}/${totalItems}). No se puede sintetizar aún.`,
       409,
     );
   }
-
-  const state = reconstructFase1RunState(session, responses);
 
   return ndjsonStreamResponse(async (emit) => {
     // Keepalive cada 5s para que Nginx no cierre la conexión mientras
@@ -103,7 +104,7 @@ export async function POST(
 
     logBusinessEvent('phase1_completed', {
       durationMs: Date.now() - session.createdAt.getTime(),
-      turnsCount: 16,
+      turnsCount: totalItems,
     });
 
     emit({ type: 'done', status: 'phase1_completed' as const });

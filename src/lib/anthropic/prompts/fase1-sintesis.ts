@@ -32,10 +32,9 @@ export function getFase1SintesisSystemPrompt(): string { return _f1s ??= loadFas
 // obligatorio.
 export const HandoffSchema = z.object({
   contexto_personal: z.object({
-    nombre: z.string().min(1),
+    alias: z.string().min(1),
     edad: z.number().int().nonnegative(),
     estado_civil_y_familia: z.string().min(1),
-    zona_geografica: z.string().min(1),
     momento_profesional: z.string().min(1),
   }),
   perfil_disc: z.object({

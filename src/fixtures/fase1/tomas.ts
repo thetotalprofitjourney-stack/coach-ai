@@ -9,15 +9,15 @@ export const fixtureTomas: Fase1Fixture = {
   slug: 'tomas',
   label: 'Tomás Iriarte (I-D, oferta internacional con familia)',
   formulario: {
-    nombre: 'Tomás Iriarte',
+    alias: 'Tomás Iriarte',
     edad: 35,
     estado_civil_y_familia:
       'Casado con María desde hace 9 años. Dos hijas (5 y 2 años). María es abogada en activo con carrera consolidada.',
-    zona_geografica: 'San Sebastián.',
     momento_profesional:
       'Gerente en una farmacéutica española, 8 años en el sector. Acaba de recibir una oferta sustancial de una multinacional con sede en Zúrich.',
     disparador:
       'Tengo una oferta muy buena en Suiza y queremos mudarnos en familia. Quiero planificarlo bien y no dejar cabos sueltos.',
+    reto_dominio: 'general',
   },
   respuestas: [
     { letter: 'B', freeText: 'Aprovecho para abrir conversaciones con gente del sector.' },

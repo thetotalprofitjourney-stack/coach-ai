@@ -6,10 +6,9 @@ export type DiscScores = {
 };
 
 export type HandoffContextoPersonal = {
-  nombre: string;
+  alias: string;
   edad: number;
   estado_civil_y_familia: string;
-  zona_geografica: string;
   momento_profesional: string;
 };
 

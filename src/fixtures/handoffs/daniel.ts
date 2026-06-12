@@ -8,10 +8,9 @@ export const danielFixture: HandoffFixture = {
   label: 'Daniel Morales — D-C, autónomo',
   handoff: {
     contexto_personal: {
-      nombre: 'Daniel Morales',
+      alias: 'Daniel Morales',
       edad: 38,
       estado_civil_y_familia: 'Casado, una hija de 6 años',
-      zona_geografica: 'Barcelona. Sin disposición declarada a moverse',
       momento_profesional:
         'En activo por cuenta ajena, lleva 12 años en la misma empresa como especialista en una disciplina estrecha del área de recursos humanos',
     },
