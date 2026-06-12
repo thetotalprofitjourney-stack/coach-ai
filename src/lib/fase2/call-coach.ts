@@ -9,9 +9,8 @@ import type { RunState } from '@/lib/fase2/types';
 // resumen estructurado dentro del estado dinámico (§4.4).
 const MAX_HISTORY_PAIRS = 4;
 
-// Extended thinking del Opus 4.7: mejora el rol no-directivo y la detección
-// de incoherencias. max_tokens debe cubrir budget_tokens + respuesta visible.
-const THINKING_BUDGET_TOKENS = 10_000;
+// Extended thinking adaptativo del Opus 4.7+: effort:high activa el razonamiento
+// profundo sin fijar un budget fijo. max_tokens cubre la respuesta visible.
 const MAX_TOKENS = 12_000;
 
 export interface CoachUsage {
@@ -102,8 +101,10 @@ function buildRequestParams(state: RunState): MessageCreateParamsNonStreaming {
     model: MODELS.coachFase2,
     max_tokens: MAX_TOKENS,
     thinking: {
-      type: 'enabled',
-      budget_tokens: THINKING_BUDGET_TOKENS,
+      type: 'adaptive',
+    },
+    output_config: {
+      effort: 'high',
     },
     system: [
       {
