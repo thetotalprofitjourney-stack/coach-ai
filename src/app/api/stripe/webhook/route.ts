@@ -68,6 +68,19 @@ export async function POST(req: NextRequest) {
   }
 
   const checkoutSession = event.data.object as Stripe.Checkout.Session;
+
+  // Ignorar pagos de otros productos de la misma cuenta Stripe.
+  if (checkoutSession.metadata?.app !== 'coach-ai') {
+    logWebhook({
+      eventId: event.id,
+      eventType: event.type,
+      checkoutSessionId: checkoutSession.id,
+      outcome: 'ignored',
+      durationMs: Date.now() - started,
+    });
+    return jsonOk({ ok: true, ignored: true });
+  }
+
   const existingToken =
     typeof checkoutSession.metadata?.session_token === 'string'
       ? checkoutSession.metadata.session_token
@@ -86,7 +99,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { token } = await createSessionRow();
+    const { token } = await createSessionRow(checkoutSession.id);
     const stripe = getStripeClient();
     await stripe.checkout.sessions.update(checkoutSession.id, {
       metadata: { session_token: token },

@@ -620,6 +620,10 @@ validación del Paso 12 y, tras el *go*, se replica en **live mode**.
      otros; la ruta los ignora y sólo gastas llamadas de más.
    - Guardar. Copiar el **Signing secret** `whsec_...` a
      `STRIPE_WEBHOOK_SECRET` en `.env.production`.
+   - **Nota sobre multi-producto**: el webhook puede apuntarse a nivel
+     de cuenta aunque haya otros productos en Stripe. Las sesiones de
+     checkout creadas por esta app llevan `metadata.app = 'coach-ai'`
+     automáticamente; la ruta ignora las que no tengan esa marca.
 5. **`NEXT_PUBLIC_SESSION_PRICE_DISPLAY`**: ajustar al mismo importe
    del Price (p. ej. `"149 €"`). Recordatorio: es inline en el
    bundle; aplicar con `docker compose ... build --no-cache` + `up -d`.
@@ -639,8 +643,13 @@ Validación rápida del webhook con el dashboard:
 - Evento: `checkout.session.completed`.
 - Debe devolver **200** en <1 s.
 - En los logs del container (`docker compose logs app`) debe
-  aparecer una línea JSON con `event='stripe_webhook'`, `outcome`
-  (`ignored` / `idempotent` / `created`) y `durationMs`.
+  aparecer una línea JSON con `event='stripe_webhook'` y
+  `outcome='ignored'` — esto es correcto: los eventos de prueba
+  del dashboard no llevan `metadata.app='coach-ai'`, así que la
+  ruta los descarta como si fueran de otro producto.
+- Para validar el flujo completo (con `outcome='created'`), hacer
+  un pago de prueba real a través de la app con una tarjeta de
+  test de Stripe (p. ej. `4242 4242 4242 4242`).
 
 ### §9.2 Stripe en live mode (cutover)
 
@@ -654,6 +663,10 @@ Validación rápida del webhook con el dashboard:
    - Webhook: `https://<dominio-final>/api/stripe/webhook`,
      únicamente `checkout.session.completed`. Copiar el signing
      secret live (`whsec_...`, distinto del test).
+   - Si la cuenta live tiene otros productos, no hace falta un
+     webhook separado: la app ignora automáticamente los pagos
+     que no vengan de su propio checkout (filtro por
+     `metadata.app = 'coach-ai'`).
 3. Sustituir en `.env.production`:
    - `STRIPE_SECRET_KEY` → `sk_live_...`
    - `STRIPE_WEBHOOK_SECRET` → el `whsec_...` del endpoint live

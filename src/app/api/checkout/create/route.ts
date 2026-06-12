@@ -35,6 +35,7 @@ export async function POST() {
       success_url: `${publicUrl}/pay/success?cs={CHECKOUT_SESSION_ID}`,
       cancel_url: `${publicUrl}/pay/cancelled`,
       allow_promotion_codes: false,
+      metadata: { app: 'coach-ai' },
     });
 
     if (!checkout.url) {

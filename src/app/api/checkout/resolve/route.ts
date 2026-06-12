@@ -56,24 +56,15 @@ export async function GET(req: NextRequest) {
   }
 
   // Fallback: webhook aún no ha disparado — crear sesión aquí.
+  // createSessionRow maneja la carrera con el webhook vía unique constraint
+  // (P2002): si el webhook gana, devuelve la sesión ya creada por él.
   try {
-    const { token } = await createSessionRow();
+    const { token } = await createSessionRow(cs);
     await stripe.checkout.sessions.update(cs, {
       metadata: { session_token: token },
     });
     return jsonOk({ token });
   } catch (err) {
-    // Posible carrera: otro proceso (webhook o poll concurrente) puede
-    // haber escrito el token justo ahora. Re-consultamos antes de rendir.
-    try {
-      const refreshed = await stripe.checkout.sessions.retrieve(cs);
-      const freshToken = refreshed.metadata?.session_token;
-      if (typeof freshToken === 'string' && freshToken.length > 0) {
-        return jsonOk({ token: freshToken });
-      }
-    } catch {
-      // ignorar: el error original es el relevante
-    }
     console.error('GET /api/checkout/resolve fallback failed', {
       cs,
       error: err instanceof Error ? err.message : String(err),
