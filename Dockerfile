@@ -64,6 +64,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # bundle — los duplicamos aquí para garantizarlos a runtime.
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+# Prompts de Anthropic leídos desde disco en runtime (fase1-administrador,
+# fase1-sintesis, fase2-coach, fase2-auxiliar). Sin esta línea el container
+# arranca pero falla con ENOENT al primer llamada a la IA.
+COPY --from=builder --chown=nextjs:nodejs /app/docs ./docs
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
