@@ -105,7 +105,7 @@ function buildUserMessage(input: CallSintesisInput): string {
     'FORMULARIO INICIAL DEL USUARIO:',
     JSON.stringify(formulario, null, 2),
     '',
-    'RESPUESTAS A LOS 16 ÍTEMS DISC:',
+    `RESPUESTAS A LOS ${answers.length} ÍTEMS DISC (dominio: ${formulario.reto_dominio}):`,
     JSON.stringify(answersPayload, null, 2),
     '',
     'Produce ahora el objeto JSON del hand-off siguiendo las reglas del prompt. Empieza con `{` y termina con `}`, sin texto alrededor.',

@@ -13,12 +13,12 @@ import { serializeFase1StateView } from '@/lib/fase1/view';
 export const maxDuration = 60;
 
 const formularioSchema = z.object({
-  nombre: z.string().min(1),
+  alias: z.string().min(1),
   edad: z.number().int().min(0).max(120),
   estado_civil_y_familia: z.string().min(1),
-  zona_geografica: z.string().min(1),
   momento_profesional: z.string().min(1),
   disparador: z.string().min(1),
+  reto_dominio: z.enum(['personal', 'profesional', 'general']),
 });
 
 const bodySchema = z.object({

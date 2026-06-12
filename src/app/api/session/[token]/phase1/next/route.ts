@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { handleAnthropicError } from '@/lib/api/anthropic-errors';
 import { jsonError, jsonOk } from '@/lib/api/response';
-import { factorOf, getItemByIndex } from '@/lib/fase1/banco';
+import { factorOf, getFilteredItemByIndex, getTotalItems } from '@/lib/fase1/banco';
 import { callAdministrador } from '@/lib/fase1/call-administrador';
 import { parseUserAnswer } from '@/lib/fase1/parse-answer';
 import type { Fase1RunState } from '@/lib/fase1/types';
@@ -54,8 +54,9 @@ export async function POST(
     where: { sessionId: session.id },
   });
   const state = reconstructFase1RunState(session, responses);
+  const totalItems = getTotalItems(state.formulario.reto_dominio);
 
-  if (state.currentItemIndex >= 16) {
+  if (state.currentItemIndex >= totalItems) {
     return jsonError(
       'INVALID_STATE',
       'Todos los ítems ya respondidos. Invoca /phase1/finish para sintetizar.',
@@ -64,7 +65,7 @@ export async function POST(
   }
 
   const parsedAnswer = parseUserAnswer(userMessage);
-  const currentItem = getItemByIndex(state.currentItemIndex);
+  const currentItem = getFilteredItemByIndex(state.currentItemIndex, state.formulario.reto_dominio);
 
   // Caso repregunta: sin letra detectada. No persistimos respuesta ni
   // avanzamos. El administrador repregunta y la siguiente request del
@@ -86,7 +87,7 @@ export async function POST(
       return jsonOk({
         adminMessage: admin.text,
         itemIndex: state.currentItemIndex,
-        totalItems: 16,
+        totalItems,
         parsedLetter: null,
         done: false,
       });
@@ -132,7 +133,7 @@ export async function POST(
     ],
   };
 
-  const directive = answered >= 16 ? 'despedir' : 'presentar';
+  const directive = answered >= totalItems ? 'despedir' : 'presentar';
 
   try {
     const admin = await callAdministrador({
@@ -150,9 +151,9 @@ export async function POST(
     return jsonOk({
       adminMessage: admin.text,
       itemIndex: answered,
-      totalItems: 16,
+      totalItems,
       parsedLetter: parsedAnswer.letter,
-      done: answered >= 16,
+      done: answered >= totalItems,
     });
   } catch (err) {
     return handleAnthropicError(err, `phase1/next ${directive}`);

@@ -17,10 +17,10 @@ export type CreateSessionResponse = z.infer<typeof createSessionResponseSchema>;
 // rechazar inputs absurdos (10 MB de trigger, edad negativa, etc.) antes de
 // llegar a la BD o al prompt de la IA.
 export const formPayloadSchema = z.object({
-  name: z.string().trim().min(1).max(80),
+  alias: z.string().trim().min(1).max(80),
   age: z.number().int().min(14).max(120),
   familyContext: z.string().trim().min(1).max(200),
-  location: z.string().trim().min(1).max(100),
+  retoDominio: z.enum(['personal', 'profesional', 'general']),
   professionalMoment: z.string().trim().min(1).max(200),
   trigger: z.string().trim().min(10).max(2000),
 });

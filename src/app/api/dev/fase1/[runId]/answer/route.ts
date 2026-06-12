@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireSessionCreateSecret } from '@/lib/api/auth';
 import { jsonError, jsonOk } from '@/lib/api/response';
-import { factorOf, getItemByIndex } from '@/lib/fase1/banco';
+import { factorOf, getFilteredItemByIndex, getTotalItems } from '@/lib/fase1/banco';
 import { callAdministrador } from '@/lib/fase1/call-administrador';
 import { callSintesis } from '@/lib/fase1/call-sintesis';
 import { parseUserAnswer } from '@/lib/fase1/parse-answer';
@@ -60,7 +60,8 @@ export async function POST(
       409,
     );
   }
-  if (state.currentItemIndex >= 16) {
+  const totalItems = getTotalItems(state.formulario.reto_dominio);
+  if (state.currentItemIndex >= totalItems) {
     return jsonError(
       'INVALID_STATE',
       'Todos los ítems ya respondidos; la síntesis debería haber corrido.',
@@ -89,7 +90,7 @@ export async function POST(
   appendTurn(runId, 'user', userMessage);
 
   const parsedAnswer = parseUserAnswer(userMessage);
-  const currentItem = getItemByIndex(state.currentItemIndex);
+  const currentItem = getFilteredItemByIndex(state.currentItemIndex, state.formulario.reto_dominio);
 
   // Caso re-pregunta: no hay letra y el tope no está agotado.
   if (parsedAnswer.letter === null) {
@@ -134,9 +135,9 @@ export async function POST(
 
   const afterRecord = getRun(runId)!;
 
-  // Cierre del bucle: hemos pasado del ítem 15 al "16". Sintetizamos y
+  // Cierre del bucle: hemos pasado del último ítem al total. Sintetizamos y
   // pedimos despedida al administrador.
-  if (afterRecord.currentItemIndex >= 16) {
+  if (afterRecord.currentItemIndex >= totalItems) {
     return await finalizeRun(runId, userMessage);
   }
 

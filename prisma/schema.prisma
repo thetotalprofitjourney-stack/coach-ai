@@ -42,7 +42,7 @@ model Session {
   userName               String?       @map("user_name")
   userAge                Int?          @map("user_age")
   userFamilyContext      String?       @map("user_family_context")
-  userLocation           String?       @map("user_location")
+  userRetoDominio        String?       @map("user_reto_dominio")
   userProfessionalMoment String?       @map("user_professional_moment")
   userTrigger            String?       @map("user_trigger")
 

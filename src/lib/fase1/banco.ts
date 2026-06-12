@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { DiscFactor, DiscLetter } from './types';
+import type { DiscFactor, DiscLetter, RetoDominio } from './types';
 
 export interface BancoOpcion {
   texto: string;
@@ -55,6 +55,31 @@ export function getItemByIndex(index: number): BancoItem {
     throw new Error(`fase1/banco: índice ${index} fuera de rango (0..15)`);
   }
   return item;
+}
+
+// Devuelve los ítems filtrados según el dominio del reto.
+// personal → ítems personal_familiar (IDs 9-16)
+// profesional → ítems profesional (IDs 1-8)
+// general → todos los ítems (IDs 1-16)
+export function getFilteredItems(retoDominio: RetoDominio): readonly BancoItem[] {
+  if (retoDominio === 'general') return BANCO_ITEMS;
+  const dominio = retoDominio === 'personal' ? 'personal_familiar' : 'profesional';
+  return BANCO_ITEMS.filter((item) => item.dominio === dominio);
+}
+
+export function getFilteredItemByIndex(index: number, retoDominio: RetoDominio): BancoItem {
+  const items = getFilteredItems(retoDominio);
+  const item = items[index];
+  if (!item) {
+    throw new Error(
+      `fase1/banco: índice ${index} fuera de rango para dominio "${retoDominio}" (0..${items.length - 1})`,
+    );
+  }
+  return item;
+}
+
+export function getTotalItems(retoDominio: RetoDominio): number {
+  return getFilteredItems(retoDominio).length;
 }
 
 export function factorOf(itemId: number, letter: DiscLetter): DiscFactor {

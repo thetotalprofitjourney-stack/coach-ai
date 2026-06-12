@@ -59,10 +59,10 @@ export async function POST(
     await prisma.session.update({
       where: { id: tokenParse.data },
       data: {
-        userName: data.name,
+        userName: data.alias,
         userAge: data.age,
         userFamilyContext: data.familyContext,
-        userLocation: data.location,
+        userRetoDominio: data.retoDominio,
         userProfessionalMoment: data.professionalMoment,
         userTrigger: data.trigger,
         status: 'phase1_in_progress',
