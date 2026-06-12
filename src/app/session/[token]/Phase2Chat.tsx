@@ -273,55 +273,52 @@ export function Phase2Chat({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 py-6 md:py-10">
-      <header className="mb-4 flex items-baseline justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.15em] text-neutral-400">
-            Coach AI
-          </p>
-          <p className="mt-0.5 text-sm font-medium text-neutral-700">
-            Sesión de coaching
-          </p>
-        </div>
-        {/* El nivel de profundización se muestra sólo como referencia interna;
-            el contador de turnos se omite deliberadamente para no generar
-            ansiedad en el usuario durante la sesión. */}
-        {level > 1 && (
-          <p className="text-xs text-neutral-400" aria-hidden="true">
-            profundidad {level}
-          </p>
-        )}
+      {/* Header mínimo — no distraer de la conversación */}
+      <header className="mb-5">
+        <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-300">
+          Coach AI
+        </p>
       </header>
 
       <OfflineBanner />
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-4"
+        className="flex-1 overflow-y-auto rounded-xl bg-white p-5"
         aria-live="polite"
       >
-        <ul className="space-y-3">
+        <ul className="space-y-5">
           {turns.map((t, i) => (
             <li
               key={`${t.turnNumber}-${t.role}-${i}`}
-              className={
-                t.role === 'coach'
-                  ? 'rounded-lg bg-white p-4 text-neutral-900 shadow-sm'
-                  : `rounded-lg bg-stone-800 p-4 text-white ${t.pending ? 'opacity-60' : ''}`
-              }
+              className={t.role === 'coach' ? '' : 'flex justify-end'}
             >
-              {t.role === 'coach' && (
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-neutral-400">
-                  Coach
+              <div
+                className={
+                  t.role === 'coach'
+                    ? 'rounded-xl bg-white px-5 py-4 text-neutral-800 shadow-sm'
+                    : `max-w-[85%] rounded-xl bg-stone-100 px-5 py-4 text-neutral-800 ${t.pending ? 'opacity-50' : ''}`
+                }
+              >
+                <p className="whitespace-pre-wrap text-[15px] leading-[1.75]">
+                  {t.content}
                 </p>
-              )}
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{t.content}</p>
-              {t.pending && (
-                <p className="mt-2 text-xs italic text-white/60">
-                  Pendiente de enviar — reintenta cuando quieras.
-                </p>
-              )}
+                {t.pending && (
+                  <p className="mt-2 text-xs text-stone-400">
+                    Pendiente de enviar — reintenta cuando quieras.
+                  </p>
+                )}
+              </div>
             </li>
           ))}
+          {/* Indicador de escritura del coach */}
+          {status.kind === 'sending' && (
+            <li className="flex items-center gap-2 px-1">
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-stone-300" />
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-stone-300 [animation-delay:0.2s]" />
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-stone-300 [animation-delay:0.4s]" />
+            </li>
+          )}
         </ul>
       </div>
 

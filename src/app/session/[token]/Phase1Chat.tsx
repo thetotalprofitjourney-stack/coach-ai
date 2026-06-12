@@ -259,24 +259,35 @@ export function Phase1Chat({
   const showSupport =
     errorSince !== null && now - errorSince >= SUPPORT_THRESHOLD_MS && online;
 
+  // Porcentaje de progreso para la barra silenciosa.
+  const progressPct = done
+    ? 100
+    : status.kind !== 'loading'
+      ? ((itemIndex + 1) / 16) * 100
+      : 0;
+
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col px-4 py-6 md:py-10">
-      <header className="mb-4 flex items-baseline justify-between">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.15em] text-neutral-400">
-            Coach AI
-          </p>
-          <p className="mt-0.5 text-sm font-medium text-neutral-700">
+      {/* Header mínimo: etiqueta + barra de progreso silenciosa */}
+      <header className="mb-5">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400">
             Cuestionario de perfil
           </p>
         </div>
-        <p className="text-sm text-neutral-500" aria-live="polite">
-          {done
-            ? '16 / 16'
-            : status.kind !== 'loading'
-              ? `${Math.min(itemIndex + 1, 16)} / 16`
-              : ''}
-        </p>
+        <div
+          className="h-0.5 w-full overflow-hidden rounded-full bg-neutral-100"
+          role="progressbar"
+          aria-valuenow={Math.round(progressPct)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Progreso del cuestionario"
+        >
+          <div
+            className="h-full rounded-full bg-stone-400 transition-all duration-500 ease-out"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
       </header>
 
       <ResumeLinkNotice url={resumeLink.url} expiresAt={resumeLink.expiresAt} />
@@ -284,36 +295,42 @@ export function Phase1Chat({
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-4"
+        className="flex-1 overflow-y-auto rounded-xl bg-white p-5"
         aria-live="polite"
       >
-        {/* Indicador de carga bajo el intro mientras se obtiene el primer ítem */}
-        {status.kind === 'loading' && (
-          <p className="mb-4 text-xs text-neutral-400">Cargando primer ítem…</p>
-        )}
-        <ul className="space-y-3">
+        <ul className="space-y-4">
           {messages.map((m, i) => (
-            <li
-              key={i}
-              className={
-                m.role === 'admin'
-                  ? 'rounded-lg bg-white p-4 text-neutral-900 shadow-sm'
-                  : `rounded-lg bg-stone-800 p-4 text-white ${m.pending ? 'opacity-60' : ''}`
-              }
-            >
-              {m.role === 'admin' && (
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-neutral-400">
-                  Coach
+            <li key={i} className={m.role === 'admin' ? '' : 'flex justify-end'}>
+              <div
+                className={
+                  m.role === 'admin'
+                    ? /* Primer mensaje (intro): tono suave y cálido; el resto, tarjeta limpia */
+                      i === 0
+                      ? 'rounded-xl bg-stone-50 px-5 py-4 text-neutral-700'
+                      : 'rounded-xl bg-white px-5 py-4 text-neutral-800 shadow-sm'
+                    : /* Mensajes del usuario: claros, a la derecha */
+                      `max-w-[85%] rounded-xl bg-stone-100 px-5 py-4 text-neutral-800 ${m.pending ? 'opacity-50' : ''}`
+                }
+              >
+                <p className="whitespace-pre-wrap text-[15px] leading-[1.75]">
+                  {m.content}
                 </p>
-              )}
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
-              {m.pending && (
-                <p className="mt-2 text-xs italic text-white/60">
-                  No se pudo enviar — pendiente de reintento.
-                </p>
-              )}
+                {m.pending && (
+                  <p className="mt-2 text-xs text-stone-400">
+                    No se pudo enviar — pendiente de reintento.
+                  </p>
+                )}
+              </div>
             </li>
           ))}
+          {/* Indicador de carga tras el intro mientras llega el primer ítem */}
+          {status.kind === 'loading' && (
+            <li className="flex items-center gap-2 px-1">
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-stone-300" />
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-stone-300 [animation-delay:0.2s]" />
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-stone-300 [animation-delay:0.4s]" />
+            </li>
+          )}
         </ul>
       </div>
 
