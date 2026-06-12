@@ -2,25 +2,17 @@
 
 import { useEffect, useState } from 'react';
 
-// Aviso persistente en las pantallas de entrada de una sesión: muestra el
-// enlace completo con botón de copiar y un recordatorio de cuántas horas
-// quedan antes de que el cron nocturno lo borre. Permite retomar la
-// sesión desde cualquier dispositivo dentro de ese plazo, mitigando caídas
-// de WiFi, cambios de navegador o cierres de pestaña.
-
 export interface ResumeLinkNoticeProps {
-  // URL pública completa a la sesión (`APP_PUBLIC_URL + /session/{token}`).
-  // Se pasa desde el server component para que no dependa del cliente
-  // resolverlo; además, si APP_PUBLIC_URL está mal configurada, el
-  // operador lo ve en seguida.
   url: string;
-  // Momento absoluto en el que el enlace deja de ser válido (ISO). El
-  // server lo calcula con la ventana abandoned actual.
   expiresAt: string;
 }
 
+// Aviso compacto para guardar el enlace de sesión. Se muestra como una
+// tira discreta fuera del formulario principal. Por defecto sólo muestra
+// el botón de copiar; la URL se puede revelar manualmente.
 export function ResumeLinkNotice({ url, expiresAt }: ResumeLinkNoticeProps) {
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [now, setNow] = useState<number>(() => Date.now());
 
   useEffect(() => {
@@ -43,45 +35,70 @@ export function ResumeLinkNotice({ url, expiresAt }: ResumeLinkNoticeProps) {
       await navigator.clipboard.writeText(url);
       setCopied(true);
     } catch {
-      // Fallback silencioso: si navigator.clipboard falla (http inseguro
-      // antiguo, permisos denegados), el usuario puede seleccionar el
-      // texto del input manualmente.
+      // Fallback: si clipboard API falla el usuario puede expandir y copiar manualmente.
     }
   }
 
   return (
     <aside
-      className="mb-4 rounded border border-neutral-200 bg-neutral-50 p-3 text-sm"
+      className="mb-6 overflow-hidden rounded-lg border border-amber-200 bg-amber-50"
       aria-label="Enlace para retomar la sesión"
     >
-      <p className="text-neutral-700">
-        <span className="font-medium text-neutral-900">
-          Guarda este enlace para retomar tu sesión.
-        </span>{' '}
-        El enlace es el único identificador: si cierras la pestaña o se
-        cae el WiFi, puedes volver aquí mientras siga activo.
-      </p>
-      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <input
-          type="text"
-          readOnly
-          value={url}
-          onFocus={(e) => e.currentTarget.select()}
-          aria-label="Enlace de la sesión"
-          className="min-w-0 flex-1 rounded border border-neutral-300 bg-white px-2 py-1.5 text-xs text-neutral-800"
-        />
-        <button
-          type="button"
-          onClick={() => void copy()}
-          className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 transition hover:bg-neutral-100"
+      <div className="flex items-center gap-3 px-4 py-3">
+        {/* Candado */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className="h-4 w-4 shrink-0 text-amber-500"
+          aria-hidden="true"
         >
-          {copied ? 'Copiado' : 'Copiar enlace'}
-        </button>
+          <path
+            fillRule="evenodd"
+            d="M10 1a4.5 4.5 0 00-4.5 4.5V9H5a2 2 0 00-2 2v6a2 2 0 002 2h10a2 2 0 002-2v-6a2 2 0 00-2-2h-.5V5.5A4.5 4.5 0 0010 1zm3 8V5.5a3 3 0 10-6 0V9h6z"
+            clipRule="evenodd"
+          />
+        </svg>
+
+        <p className="min-w-0 flex-1 text-sm text-amber-900">
+          <span className="font-medium">Guarda el enlace de esta sesión.</span>{' '}
+          <span className="text-amber-700">
+            Caduca en {remainingHours}{' '}
+            {remainingHours === 1 ? 'hora' : 'horas'}.
+          </span>
+        </p>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs text-amber-600 underline-offset-2 hover:underline"
+            aria-expanded={expanded}
+          >
+            {expanded ? 'Ocultar' : 'Ver URL'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void copy()}
+            className="rounded-md bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-200"
+          >
+            {copied ? 'Copiado ✓' : 'Copiar enlace'}
+          </button>
+        </div>
       </div>
-      <p className="mt-2 text-xs text-neutral-600">
-        Expira en aproximadamente {remainingHours}{' '}
-        {remainingHours === 1 ? 'hora' : 'horas'} si no la retomas.
-      </p>
+
+      {expanded && (
+        <div className="border-t border-amber-200 px-4 py-2">
+          <input
+            type="text"
+            readOnly
+            value={url}
+            onFocus={(e) => e.currentTarget.select()}
+            aria-label="Enlace de la sesión"
+            className="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-xs text-neutral-700 focus:outline-none"
+          />
+        </div>
+      )}
     </aside>
   );
 }

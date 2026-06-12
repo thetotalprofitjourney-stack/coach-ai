@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react'; // useRef kept for hydratedRef
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,10 +8,6 @@ import { formPayloadSchema, type FormPayload } from '@/lib/api/schemas';
 import type { ResumeLinkData } from '@/lib/session/resume-link';
 import { ResumeLinkNotice } from './ResumeLinkNotice';
 
-// Clave de borrador en localStorage. El contenido es JSON parcial del
-// FormPayload; si un corte de luz o crash del navegador rompe la sesión,
-// al volver a abrir el enlace los campos se rehidratan. Se borra tras
-// POST /form exitoso (ver onSubmit).
 const DRAFT_KEY_PREFIX = 'coach-ai:draft:';
 function draftKey(token: string) {
   return `${DRAFT_KEY_PREFIX}${token}:initial-form`;
@@ -57,14 +53,12 @@ function clearDraft(token: string): void {
   }
 }
 
-// Opciones fijas de §2.3. "Otro" activa el input de texto libre; el valor
-// enviado en ese caso es el texto que el usuario escriba.
 const PROFESSIONAL_OPTIONS = [
-  'En activo por cuenta ajena',
+  'Por cuenta ajena',
   'Autónomo',
   'Emprendedor',
   'Desempleado',
-  'Próximo a jubilarse',
+  'Próximo a jubilarme',
   'Otro',
 ] as const;
 
@@ -91,6 +85,7 @@ export function InitialForm({
     handleSubmit,
     setValue,
     setError,
+    setFocus,
     watch,
     formState: { errors, isSubmitting },
   } = useForm<FormPayload>({
@@ -105,11 +100,12 @@ export function InitialForm({
     },
   });
 
-  // Rehidrata el borrador al montar. Si existen valores, setValue en
-  // cada campo presente. No pisamos valores ya puestos por defaultValues
-  // porque estos están vacíos; la primera renderización muestra los
-  // campos vacíos y a los pocos ms se rellenan con el borrador. Mejor
-  // un flash mínimo que un hydration mismatch SSR.
+  // Foco automático en el primer campo al montar para que el usuario pueda
+  // empezar a escribir sin tener que hacer clic en el input.
+  useEffect(() => {
+    setFocus('name');
+  }, [setFocus]);
+
   const hydratedRef = useRef(false);
   useEffect(() => {
     if (hydratedRef.current) return;
@@ -123,9 +119,6 @@ export function InitialForm({
     if (typeof draft.location === 'string') setValue('location', draft.location);
     if (typeof draft.professionalMoment === 'string') {
       setValue('professionalMoment', draft.professionalMoment);
-      // Reconstruye el select: si el texto coincide con una opción
-      // cerrada, se selecciona esa opción; si no, es "Otro" con texto
-      // libre.
       const closed = (PROFESSIONAL_OPTIONS as readonly string[]).includes(
         draft.professionalMoment,
       );
@@ -140,16 +133,8 @@ export function InitialForm({
     if (typeof draft.trigger === 'string') setValue('trigger', draft.trigger);
   }, [token, setValue]);
 
-  // Persiste el borrador con debounce cada vez que cambian los valores.
-  // Usamos `watch()` como fuente. No guardamos la elección del select
-  // aparte: si el usuario eligió "Otro" y escribió texto, professional
-  // Moment ya contiene ese texto — al rehidratar lo reconocemos como
-  // "Otro" porque no está en la lista cerrada.
   useEffect(() => {
     const subscription = watch((values) => {
-      // Debounce ligero con requestIdleCallback o setTimeout.
-      // El cuerpo es barato (stringify), así que un timeout de 200ms
-      // sobra. Persistimos TODO el objeto incluso con un único cambio.
       const id = setTimeout(() => {
         writeDraft(token, {
           name: values.name ?? '',
@@ -169,8 +154,6 @@ export function InitialForm({
 
   const onChoiceChange = (value: string) => {
     setProfessionalChoice(value);
-    // Si es una opción cerrada, el valor final coincide con la opción.
-    // Si es "Otro", limpiamos para que el usuario rellene el texto libre.
     setValue('professionalMoment', value === OTHER ? '' : value, {
       shouldValidate: false,
     });
@@ -200,7 +183,6 @@ export function InitialForm({
       return;
     }
 
-    // Los errores del backend siguen el contrato de src/lib/api/response.ts.
     const body = (await res.json().catch(() => null)) as
       | { error?: { code?: string; details?: { fieldErrors?: Record<string, string[]> } } }
       | null;
@@ -228,8 +210,6 @@ export function InitialForm({
     }
 
     if (res.status === 409) {
-      // La sesión ya no admite el formulario (otra pestaña envió antes).
-      // Refrescamos para que el server component pinte la siguiente pantalla.
       router.refresh();
       return;
     }
@@ -247,11 +227,11 @@ export function InitialForm({
 
   if (submitError?.kind === 'not_found') {
     return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-10 text-base md:text-[17px]">
-        <h1 className="text-2xl font-semibold tracking-tight">
+      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-10">
+        <h1 className="text-xl font-semibold tracking-tight text-neutral-900">
           Esta sesión ya no existe
         </h1>
-        <p className="mt-4 text-neutral-600">
+        <p className="mt-3 text-sm leading-relaxed text-neutral-600">
           El enlace ha dejado de ser válido. Si acabas de pagar, refresca la
           página; si no, inicia una nueva sesión.
         </p>
@@ -259,162 +239,203 @@ export function InitialForm({
     );
   }
 
-  const fieldClass =
-    'mt-1 block w-full rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-0 aria-[invalid=true]:border-red-600';
+  // Clases base para campos de texto
+  const fieldInput =
+    'mt-1.5 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:ring-offset-0 aria-[invalid=true]:border-red-400 aria-[invalid=true]:ring-red-400 transition-shadow';
 
   return (
-    <main className="mx-auto max-w-md px-6 py-10 text-base md:text-[17px]">
-      <header className="mb-8">
-        <p className="text-sm uppercase tracking-wide text-neutral-500">
+    <main className="mx-auto max-w-lg px-5 py-8">
+
+      {/* Cabecera */}
+      <header className="mb-6">
+        <p className="text-xs font-medium uppercase tracking-[0.15em] text-neutral-400">
           Coach AI
         </p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-          Antes de empezar
+        <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-neutral-900">
+          Cuéntame tu situación
         </h1>
-        <p className="mt-3 text-neutral-600">
-          Unos datos básicos para que el coach pueda acompañarte. Tardarás
-          dos o tres minutos.
+        <p className="mt-1.5 text-sm leading-relaxed text-neutral-500">
+          Dos o tres minutos para que la sesión sea lo más precisa posible.
         </p>
       </header>
 
+      {/* Aviso de enlace — fuera del formulario, visualmente separado */}
       <ResumeLinkNotice url={resumeLink.url} expiresAt={resumeLink.expiresAt} />
 
-      <form
-        noValidate
-        onSubmit={handleSubmit(onSubmit)}
-        className="space-y-6"
-      >
-        <Field
-          id="name"
-          label="Nombre"
-          error={errors.name?.message}
-        >
-          <input
-            id="name"
-            type="text"
-            autoComplete="given-name"
-            className={fieldClass}
-            aria-invalid={!!errors.name}
-            aria-describedby={errors.name ? 'name-error' : undefined}
-            {...register('name')}
-          />
-        </Field>
+      {/* Formulario */}
+      <form noValidate onSubmit={handleSubmit(onSubmit)} className="space-y-5">
 
-        <Field id="age" label="Edad" error={errors.age?.message}>
-          <input
-            id="age"
-            type="number"
-            inputMode="numeric"
-            min={14}
-            max={120}
-            className={fieldClass}
-            aria-invalid={!!errors.age}
-            aria-describedby={errors.age ? 'age-error' : undefined}
-            {...register('age', { valueAsNumber: true })}
-          />
-        </Field>
+        {/* Fila 1: Nombre + Edad */}
+        <div className="grid grid-cols-[1fr_5rem] gap-4">
+          <div>
+            <label htmlFor="name" className={labelClass}>
+              Nombre
+            </label>
+            <input
+              id="name"
+              type="text"
+              autoComplete="given-name"
+              className={fieldInput}
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? 'name-error' : undefined}
+              {...register('name')}
+            />
+            {errors.name && (
+              <p id="name-error" className={errorClass}>
+                {errors.name.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="age" className={labelClass}>
+              Edad
+            </label>
+            <input
+              id="age"
+              type="number"
+              inputMode="numeric"
+              min={14}
+              max={120}
+              className={fieldInput}
+              aria-invalid={!!errors.age}
+              aria-describedby={errors.age ? 'age-error' : undefined}
+              {...register('age', { valueAsNumber: true })}
+            />
+            {errors.age && (
+              <p id="age-error" className={errorClass}>
+                {errors.age.message}
+              </p>
+            )}
+          </div>
+        </div>
 
-        <Field
-          id="familyContext"
-          label="Estado civil y situación familiar"
-          hint='Una línea corta. Por ejemplo: "casado, dos hijos de 10 y 13".'
-          error={errors.familyContext?.message}
-        >
-          <input
-            id="familyContext"
-            type="text"
-            className={fieldClass}
-            aria-invalid={!!errors.familyContext}
-            aria-describedby={
-              errors.familyContext
-                ? 'familyContext-error familyContext-hint'
-                : 'familyContext-hint'
-            }
-            {...register('familyContext')}
-          />
-        </Field>
+        {/* Fila 2: Situación familiar + Ciudad */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="familyContext" className={labelClass}>
+              Situación familiar
+            </label>
+            <input
+              id="familyContext"
+              type="text"
+              placeholder='p. ej. "casado, dos hijos"'
+              className={fieldInput}
+              aria-invalid={!!errors.familyContext}
+              aria-describedby={errors.familyContext ? 'familyContext-error' : undefined}
+              {...register('familyContext')}
+            />
+            {errors.familyContext && (
+              <p id="familyContext-error" className={errorClass}>
+                {errors.familyContext.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <label htmlFor="location" className={labelClass}>
+              Ciudad o área
+            </label>
+            <input
+              id="location"
+              type="text"
+              autoComplete="address-level2"
+              className={fieldInput}
+              aria-invalid={!!errors.location}
+              aria-describedby={errors.location ? 'location-error' : undefined}
+              {...register('location')}
+            />
+            {errors.location && (
+              <p id="location-error" className={errorClass}>
+                {errors.location.message}
+              </p>
+            )}
+          </div>
+        </div>
 
-        <Field
-          id="location"
-          label="Zona geográfica"
-          hint="Ciudad o área."
-          error={errors.location?.message}
-        >
-          <input
-            id="location"
-            type="text"
-            autoComplete="address-level2"
-            className={fieldClass}
-            aria-invalid={!!errors.location}
-            aria-describedby={
-              errors.location ? 'location-error location-hint' : 'location-hint'
-            }
-            {...register('location')}
-          />
-        </Field>
-
-        <Field
-          id="professionalChoice"
-          label="Momento profesional actual"
-          error={errors.professionalMoment?.message}
-        >
-          <select
-            id="professionalChoice"
-            className={fieldClass}
-            value={professionalChoice}
-            onChange={(e) => onChoiceChange(e.target.value)}
-            aria-invalid={!!errors.professionalMoment}
-            aria-describedby={
-              errors.professionalMoment ? 'professionalChoice-error' : undefined
-            }
+        {/* Momento profesional — chips */}
+        <div>
+          <p className={labelClass} id="prof-label">
+            Momento profesional
+          </p>
+          {/* Campo oculto que react-hook-form valida */}
+          <input type="hidden" {...register('professionalMoment')} />
+          <div
+            className="mt-2 flex flex-wrap gap-2"
+            role="group"
+            aria-labelledby="prof-label"
           >
-            <option value="" disabled>
-              Selecciona una opción
-            </option>
-            {PROFESSIONAL_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
+            {PROFESSIONAL_OPTIONS.map((opt) => {
+              const selected = professionalChoice === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => onChoiceChange(opt)}
+                  aria-pressed={selected}
+                  className={
+                    selected
+                      ? 'rounded-full bg-stone-900 px-4 py-1.5 text-sm font-medium text-white transition'
+                      : 'rounded-full border border-neutral-200 bg-white px-4 py-1.5 text-sm text-neutral-700 transition hover:border-stone-400 hover:bg-stone-50'
+                  }
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
           {isOther && (
             <input
               id="professionalMomentOther"
               type="text"
-              placeholder="Describe tu momento profesional"
-              className={`${fieldClass} mt-2`}
-              aria-label="Describe tu momento profesional"
+              placeholder="Describe tu situación profesional"
+              className={`${fieldInput} mt-3`}
+              aria-label="Describe tu situación profesional"
               aria-invalid={!!errors.professionalMoment}
               aria-describedby={
-                errors.professionalMoment ? 'professionalChoice-error' : undefined
+                errors.professionalMoment ? 'prof-error' : undefined
               }
               {...register('professionalMoment')}
             />
           )}
-        </Field>
+          {errors.professionalMoment && (
+            <p id="prof-error" className={errorClass}>
+              {errors.professionalMoment.message}
+            </p>
+          )}
+        </div>
 
-        <Field
-          id="trigger"
-          label="¿Qué decisión o dilema quieres trabajar hoy?"
-          hint="Cuéntalo en dos o tres frases, ábrete y cuéntamela, es la mejor manera de ayudarte."
-          error={errors.trigger?.message}
-        >
+        {/* Decisión o dilema */}
+        <div>
+          <label htmlFor="trigger" className={labelClass}>
+            ¿Qué decisión o dilema quieres trabajar hoy?
+          </label>
+          <p className="mt-0.5 text-xs text-neutral-400">
+            Dos o tres frases. Cuanto más concreto, mejor sesión.
+          </p>
           <textarea
             id="trigger"
-            rows={5}
-            className={fieldClass}
+            rows={2}
+            className={`${fieldInput} resize-none overflow-hidden`}
+            style={{ minHeight: '5rem' }}
             aria-invalid={!!errors.trigger}
-            aria-describedby={
-              errors.trigger ? 'trigger-error trigger-hint' : 'trigger-hint'
-            }
+            aria-describedby={errors.trigger ? 'trigger-error' : undefined}
+            onInput={(e) => {
+              const el = e.currentTarget;
+              el.style.height = 'auto';
+              el.style.height = `${el.scrollHeight}px`;
+            }}
             {...register('trigger')}
           />
-        </Field>
+          {errors.trigger && (
+            <p id="trigger-error" className={errorClass}>
+              {errors.trigger.message}
+            </p>
+          )}
+        </div>
 
         {submitError?.kind === 'generic' && (
           <p
             role="alert"
-            className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
+            className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800"
           >
             {submitError.message}
           </p>
@@ -423,7 +444,7 @@ export function InitialForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded bg-neutral-900 px-4 py-3 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? 'Enviando…' : 'Comenzar sesión'}
         </button>
@@ -432,35 +453,5 @@ export function InitialForm({
   );
 }
 
-function Field({
-  id,
-  label,
-  hint,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  hint?: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className="block font-medium text-neutral-900">
-        {label}
-      </label>
-      {hint && (
-        <p id={`${id}-hint`} className="mt-1 text-sm text-neutral-600">
-          {hint}
-        </p>
-      )}
-      {children}
-      {error && (
-        <p id={`${id}-error`} className="mt-1 text-sm text-red-700">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
+const labelClass = 'block text-sm font-medium text-neutral-800';
+const errorClass = 'mt-1 text-xs text-red-600';
