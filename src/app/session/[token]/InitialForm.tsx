@@ -6,8 +6,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formPayloadSchema, type FormPayload } from '@/lib/api/schemas';
 import type { ResumeLinkData } from '@/lib/session/resume-link';
-import { ResumeLinkNotice } from './ResumeLinkNotice';
-
 const DRAFT_KEY_PREFIX = 'coach-ai:draft:';
 function draftKey(token: string) {
   return `${DRAFT_KEY_PREFIX}${token}:initial-form`;
@@ -71,9 +69,9 @@ const FAMILY_OPTIONS = [
 ] as const;
 
 const RETO_OPTIONS = [
-  { value: 'personal', label: 'Personal', desc: 'Relaciones, vida personal, bienestar' },
-  { value: 'profesional', label: 'Profesional', desc: 'Trabajo, carrera, negocio' },
-  { value: 'general', label: 'General', desc: 'Afecta a todo (p. ej. emprender)' },
+  { value: 'personal', label: 'Personal' },
+  { value: 'profesional', label: 'Profesional' },
+  { value: 'general', label: 'Ambos' },
 ] as const;
 
 const OTHER = 'Otro';
@@ -86,10 +84,9 @@ type SubmitError =
 
 export function InitialForm({
   token,
-  resumeLink,
 }: {
   token: string;
-  resumeLink: ResumeLinkData;
+  resumeLink?: ResumeLinkData;
 }) {
   const router = useRouter();
   const [professionalChoice, setProfessionalChoice] = useState<string>('');
@@ -278,30 +275,25 @@ export function InitialForm({
   const retoDominio = watch('retoDominio');
 
   return (
-    <main className="mx-auto max-w-lg px-5 py-8">
+    <main className="mx-auto max-w-lg px-5 py-5">
 
       {/* Cabecera */}
-      <header className="mb-6">
+      <header className="mb-4">
         <p className="text-xs font-medium uppercase tracking-[0.15em] text-neutral-400">
           Coach AI
         </p>
-        <h1 className="mt-1.5 text-xl font-semibold tracking-tight text-neutral-900">
+        <h1 className="mt-1 text-xl font-semibold tracking-tight text-neutral-900">
           Cuéntame tu situación
         </h1>
-        <p className="mt-1.5 text-sm leading-relaxed text-neutral-500">
-          Dos o tres minutos para que la sesión sea lo más precisa posible.
-        </p>
       </header>
 
-      <ResumeLinkNotice url={resumeLink.url} expiresAt={resumeLink.expiresAt} />
-
-      <form noValidate onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <form noValidate onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
         {/* Fila 1: Alias + Edad */}
         <div className="grid grid-cols-[1fr_5rem] gap-4">
           <div>
             <label htmlFor="alias" className={labelClass}>
-              ¿Cómo quieres que te llamen?
+              ¿Cómo quieres que te llame?
             </label>
             <input
               id="alias"
@@ -345,10 +337,10 @@ export function InitialForm({
         {/* Ámbito del reto */}
         <div>
           <p className={labelClass} id="reto-label">
-            ¿Qué ámbito tiene tu reto?
+            Ámbito del reto
           </p>
           <input type="hidden" {...register('retoDominio')} />
-          <div className="mt-2 flex flex-wrap gap-2" role="group" aria-labelledby="reto-label">
+          <div className="mt-2 flex gap-2" role="group" aria-labelledby="reto-label">
             {RETO_OPTIONS.map((opt) => {
               const selected = retoDominio === opt.value;
               return (
@@ -359,16 +351,11 @@ export function InitialForm({
                   aria-pressed={selected}
                   className={
                     selected
-                      ? 'flex flex-col items-start rounded-xl bg-stone-900 px-4 py-2.5 text-left transition'
-                      : 'flex flex-col items-start rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-left transition hover:border-stone-400 hover:bg-stone-50'
+                      ? 'rounded-full bg-stone-900 px-4 py-1.5 text-sm font-medium text-white transition'
+                      : 'rounded-full border border-neutral-200 bg-white px-4 py-1.5 text-sm text-neutral-700 transition hover:border-stone-400 hover:bg-stone-50'
                   }
                 >
-                  <span className={`text-sm font-medium ${selected ? 'text-white' : 'text-neutral-800'}`}>
-                    {opt.label}
-                  </span>
-                  <span className={`text-xs ${selected ? 'text-stone-300' : 'text-neutral-400'}`}>
-                    {opt.desc}
-                  </span>
+                  {opt.label}
                 </button>
               );
             })}
@@ -484,15 +471,13 @@ export function InitialForm({
         <div>
           <label htmlFor="trigger" className={labelClass}>
             ¿Qué decisión o dilema quieres trabajar hoy?
+            <span className="ml-1.5 font-normal text-neutral-400 text-xs">Dos o tres frases, cuanto más concreto mejor.</span>
           </label>
-          <p className="mt-0.5 text-xs text-neutral-400">
-            Dos o tres frases. Cuanto más concreto, mejor sesión.
-          </p>
           <textarea
             id="trigger"
             rows={2}
             className={`${fieldInput} resize-none overflow-hidden`}
-            style={{ minHeight: '5rem' }}
+            style={{ minHeight: '4.5rem' }}
             aria-invalid={!!errors.trigger}
             aria-describedby={errors.trigger ? 'trigger-error' : undefined}
             onInput={(e) => {
@@ -521,7 +506,7 @@ export function InitialForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSubmitting ? 'Enviando…' : 'Comenzar sesión'}
         </button>
