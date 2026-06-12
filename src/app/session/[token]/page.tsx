@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { sessionTokenSchema } from '@/lib/api/schemas';
 import { buildResumeLinkData } from '@/lib/session/resume-link';
-import { isEmailConfigured } from '@/lib/email/client';
 import { InitialForm } from './InitialForm';
 import { Phase1Chat } from './Phase1Chat';
 import { Phase1Placeholder } from './Phase1Placeholder';
@@ -32,9 +31,8 @@ export default async function SessionPage({
 
   // Datos del aviso de retomar (URL pública + expiresAt). Se renderiza
   // en los tres screens de entrada (InitialForm, Phase1Chat,
-  // Phase2Bootstrap). No aparece ni en Phase2Chat (foco de conversación)
-  // ni en ReportView (que tiene su propio timer de 10 min) ni en la
-  // sesión cerrada.
+  // Phase2Bootstrap). No aparece ni en Phase2Chat ni en ReportView
+  // ni en la sesión cerrada.
   const resumeLink = buildResumeLinkData(tokenParse.data, session.createdAt);
 
   switch (session.status) {
@@ -77,11 +75,7 @@ export default async function SessionPage({
           userName: true,
           createdAt: true,
           finalReport: {
-            select: {
-              reportContent: true,
-              downloadedAt: true,
-              emailedAt: true,
-            },
+            select: { reportContent: true },
           },
         },
       });
@@ -92,10 +86,6 @@ export default async function SessionPage({
           token={tokenParse.data}
           report={report}
           userName={row.userName}
-          createdAt={row.createdAt.toISOString()}
-          initialDownloadedAt={row.finalReport.downloadedAt?.toISOString() ?? null}
-          initialEmailedAt={row.finalReport.emailedAt?.toISOString() ?? null}
-          emailEnabled={isEmailConfigured()}
         />
       );
     }
