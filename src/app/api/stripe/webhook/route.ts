@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { token } = await createSessionRow();
+    const { token } = await createSessionRow(checkoutSession.id);
     const stripe = getStripeClient();
     await stripe.checkout.sessions.update(checkoutSession.id, {
       metadata: { session_token: token },

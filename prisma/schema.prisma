@@ -31,6 +31,10 @@ model Session {
   status                 SessionStatus @default(created)
   createdAt              DateTime      @default(now()) @map("created_at")
   closedAt               DateTime?     @map("closed_at")
+  // ID de la Stripe Checkout Session que originó esta sesión. Nullable para
+  // sesiones creadas manualmente. Unique: garantiza idempotencia cuando el
+  // webhook y /api/checkout/resolve intentan crear simultáneamente.
+  stripeCheckoutSessionId String?      @unique @map("stripe_checkout_session_id")
   // Los campos del formulario inicial (§2.3) se rellenan en la transición
   // `created` → `phase1_in_progress` vía POST /api/session/{token}/form.
   // Nullable porque en el estado `created` la sesión ya existe (la creó el
