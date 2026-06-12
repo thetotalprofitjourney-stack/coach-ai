@@ -91,7 +91,9 @@ export async function POST(
     );
   }
 
-  const userTurnNumber = state.coachTurnNumber;
+  // coachTurnNumber is the max turn number of coach turns. The next user
+  // turn occupies coachTurnNumber+1 and the coach reply coachTurnNumber+2.
+  const userTurnNumber = state.coachTurnNumber + 1;
   const withUser: RunState = {
     ...state,
     turns: [
@@ -138,7 +140,7 @@ export async function POST(
     subjectiveTermsPending: newPendingList,
   };
 
-  const nextCoachTurnNumber = state.coachTurnNumber + 1;
+  const nextCoachTurnNumber = state.coachTurnNumber + 2;
 
   // A partir de aquí abrimos un stream NDJSON hacia el cliente. Mientras
   // Opus genera tokens emitimos {type:'delta'}; al terminar persistimos el
