@@ -53,6 +53,7 @@ export function Phase1Chat({
   const [now, setNow] = useState<number>(() => Date.now());
   const bootstrappedRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (bootstrappedRef.current) return;
@@ -102,6 +103,14 @@ export function Phase1Chat({
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [errorSince]);
+
+  // Auto-foco en el input cuando el cuestionario está listo para recibir
+  // respuesta, para que el usuario pueda escribir sin hacer clic.
+  useEffect(() => {
+    if (status.kind === 'ready' && !done) {
+      inputRef.current?.focus();
+    }
+  }, [status.kind, done]);
 
   const doSend = async (text: string, isRetry: boolean) => {
     setStatus({ kind: 'sending' });
@@ -369,6 +378,7 @@ export function Phase1Chat({
           className="mt-4 flex gap-2"
         >
           <input
+            ref={inputRef}
             type="text"
             value={inputDraft.value}
             onChange={(e) => inputDraft.setValue(e.target.value)}

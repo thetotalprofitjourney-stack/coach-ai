@@ -53,6 +53,7 @@ export function Phase2Chat({
   const [errorSince, setErrorSince] = useState<number | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -66,6 +67,14 @@ export function Phase2Chat({
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [errorSince]);
+
+  // Auto-foco en el textarea cuando la sesión está lista para recibir
+  // respuesta. Evita que el usuario tenga que hacer clic para empezar a escribir.
+  useEffect(() => {
+    if (status.kind === 'ready' && coachTurnNumber < MAX_COACH_TURNS) {
+      textareaRef.current?.focus();
+    }
+  });
 
   const markError = (message: string, technical?: string) => {
     setStatus({ kind: 'error', message, technical });
@@ -381,16 +390,30 @@ export function Phase2Chat({
               e.preventDefault();
               void send();
             }}
-            className="mt-4 flex gap-2"
+            className="mt-4 flex items-end gap-2"
           >
-            <input
-              type="text"
+            <textarea
+              ref={textareaRef}
               value={inputDraft.value}
-              onChange={(e) => inputDraft.setValue(e.target.value)}
-              placeholder="Escribe tu respuesta…"
+              onChange={(e) => {
+                inputDraft.setValue(e.target.value);
+                // Auto-resize
+                e.target.style.height = 'auto';
+                e.target.style.height = `${e.target.scrollHeight}px`;
+              }}
+              onKeyDown={(e) => {
+                // Enter envía; Shift+Enter inserta salto de línea
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={1}
+              placeholder="Escribe tu respuesta… (Enter para enviar)"
               disabled={status.kind !== 'ready' || hasPending}
               aria-label="Tu respuesta"
-              className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-60"
+              className="flex-1 resize-none overflow-hidden rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-60"
+              style={{ minHeight: '2.75rem', maxHeight: '12rem' }}
             />
             <button
               type="submit"
@@ -400,7 +423,7 @@ export function Phase2Chat({
                 !online ||
                 inputDraft.value.trim().length === 0
               }
-              className="rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              className="shrink-0 rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {status.kind === 'sending'
                 ? 'Pensando…'
