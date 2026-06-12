@@ -30,9 +30,12 @@ const MARGINS = { top: 72, bottom: 96, left: 72, right: 72 };
 export function renderReportPdf(input: RenderReportInput): Promise<Buffer> {
   const { report, userName, createdAt } = input;
 
+  // compress: false evita el uso de zlib nativo, que causa un crash de
+  // aserción ("close before init") en el runtime standalone de Next.js/Docker.
   const doc = new PDFDocument({
     size: 'A4',
     margins: MARGINS,
+    compress: false,
     info: {
       Title: 'Informe de sesión',
       Author: PRODUCT_NAME,
