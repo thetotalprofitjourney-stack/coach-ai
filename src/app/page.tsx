@@ -9,8 +9,6 @@ export const metadata: Metadata = {
     'Sesión única de coaching profesional asistida por IA, completamente anónima, con informe descargable al finalizar.',
 };
 
-// Landing pública (§2.1). El copy sale de §1 y §2.1 del documento de
-// proyecto; el operador revisa antes de producción (ver TODOs en README).
 export default function HomePage() {
   const price = process.env.NEXT_PUBLIC_SESSION_PRICE_DISPLAY?.trim() || '—';
   const videoUrl = process.env.NEXT_PUBLIC_PROMO_VIDEO_URL?.trim();
@@ -18,77 +16,143 @@ export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">
       <main className="flex-1">
-        <section className="mx-auto max-w-3xl px-6 pt-16 pb-12 sm:pt-24 sm:pb-16">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            Una sesión para trabajar una decisión
-          </h1>
-          <p className="mt-5 text-base text-neutral-600 sm:text-lg">
-            Coaching profesional asistido por IA. Anónimo, acotado, con
-            informe descargable al finalizar.
-          </p>
-          <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-8">
-            <BuyButton />
-            <PreviewButton />
+
+        {/* Hero */}
+        <section className="bg-stone-950 text-white">
+          <div className="mx-auto max-w-3xl px-6 pt-20 pb-16 sm:pt-28 sm:pb-24">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-stone-400">
+              Coach AI
+            </p>
+            <h1 className="mt-5 font-serif text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+              Una sesión para trabajar
+              <br className="hidden sm:inline" /> una decisión difícil
+            </h1>
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-stone-300 sm:text-xl">
+              Coaching profesional asistido por IA. Anónimo, sin registro, con
+              informe descargable al finalizar.
+            </p>
+            <div className="mt-10 flex flex-col items-start gap-5 sm:flex-row sm:items-center">
+              <BuyButton variant="light" />
+              <PreviewButton variant="light" />
+            </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-3xl px-6 py-12 sm:py-16">
-          <h2 className="text-2xl font-semibold tracking-tight">Qué es</h2>
-          <p className="mt-4 text-base leading-relaxed text-neutral-700 sm:text-lg">
-            No es terapia ni coaching humano. Es una sesión única con una IA
-            entrenada para escuchar con rigor y preguntar sin dirigirte. No
-            sugiere caminos, no valida emocionalmente, no alaba la respuesta
-            fácil. Su único instrumento es la pregunta; la decisión sale de ti.
+        {/* Qué es */}
+        <section className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400">
+            Qué es
+          </p>
+          <p className="mt-5 max-w-2xl text-2xl font-medium leading-snug text-neutral-900 sm:text-3xl">
+            No es terapia. No es un chatbot. Es un coach que solo pregunta.
+          </p>
+          <p className="mt-5 max-w-2xl text-base leading-relaxed text-neutral-600 sm:text-lg">
+            No sugiere caminos, no valida emocionalmente, no alaba la respuesta
+            fácil. Su único instrumento es la pregunta. La claridad y la decisión
+            salen de ti.
           </p>
         </section>
 
-        <section className="mx-auto max-w-3xl px-6 py-12 sm:py-16">
-          <h2 className="text-2xl font-semibold tracking-tight">Cómo funciona</h2>
-          <ol className="mt-6 space-y-6">
-            <li>
-              <h3 className="text-lg font-medium">1. Formulario breve</h3>
-              <p className="mt-2 text-base leading-relaxed text-neutral-700">
-                Dos o tres minutos con tus datos básicos y el dilema que
-                quieres trabajar hoy.
-              </p>
-            </li>
-            <li>
-              <h3 className="text-lg font-medium">
-                2. Conversación inicial y sesión de coaching
-              </h3>
-              <p className="mt-2 text-base leading-relaxed text-neutral-700">
-                Una primera fase conversacional de 15 a 20 minutos para
-                calibrar el contexto y, a continuación, una sesión de coaching
-                de 40 a 50 minutos sobre tu decisión.
-              </p>
-            </li>
-            <li>
-              <h3 className="text-lg font-medium">3. Informe final</h3>
-              <p className="mt-2 text-base leading-relaxed text-neutral-700">
-                Al cerrar, descargas un informe estructurado en PDF y Word con
-                lo que has dicho: objetivo, razones, decisión y primer paso.
-              </p>
-            </li>
-          </ol>
+        {/* Cómo funciona */}
+        <section className="border-t border-neutral-100">
+          <div className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400">
+              Cómo funciona
+            </p>
+            <ol className="mt-10 space-y-10">
+              <li className="flex gap-6">
+                <span className="flex-none select-none text-3xl font-light text-neutral-200">
+                  01
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold text-neutral-900">
+                    Formulario breve
+                  </h3>
+                  <p className="mt-2 leading-relaxed text-neutral-600">
+                    Dos o tres minutos con tus datos básicos y el dilema o
+                    decisión que quieres trabajar hoy.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-6">
+                <span className="flex-none select-none text-3xl font-light text-neutral-200">
+                  02
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold text-neutral-900">
+                    Cuestionario y sesión de coaching
+                  </h3>
+                  <p className="mt-2 leading-relaxed text-neutral-600">
+                    Una fase inicial conversacional de 15 a 20 minutos para
+                    calibrar tu perfil y, a continuación, una sesión de
+                    coaching de 40 a 50 minutos sobre tu decisión.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-6">
+                <span className="flex-none select-none text-3xl font-light text-neutral-200">
+                  03
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold text-neutral-900">
+                    Informe final
+                  </h3>
+                  <p className="mt-2 leading-relaxed text-neutral-600">
+                    Al cerrar, descargas un informe estructurado en PDF y Word
+                    con tu objetivo, razones, decisión y primer paso.
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </div>
         </section>
 
-        <section className="mx-auto max-w-3xl px-6 py-12 sm:py-16">
-          <h2 className="text-2xl font-semibold tracking-tight">Qué obtienes</h2>
-          <ul className="mt-6 space-y-3 text-base leading-relaxed text-neutral-700">
-            <li>
-              Informe estructurado con tu objetivo, razones, decisión y primer
-              paso.
-            </li>
-            <li>Anonimato total: sin cuenta, sin email, sin datos conservados.</li>
-            <li>Una única sesión, sin suscripción ni seguimiento.</li>
-            <li>Descarga en PDF y Word.</li>
-          </ul>
+        {/* Qué obtienes */}
+        <section className="border-y border-neutral-100 bg-stone-50">
+          <div className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400">
+              Qué obtienes
+            </p>
+            <ul className="mt-10 grid gap-4 sm:grid-cols-2">
+              {[
+                {
+                  title: 'Informe estructurado',
+                  body: 'Objetivo, razones, decisión y primer paso. Descargable en PDF y Word.',
+                },
+                {
+                  title: 'Anonimato total',
+                  body: 'Sin cuenta, sin email. Tus datos no se conservan más allá de la sesión.',
+                },
+                {
+                  title: 'Una sola sesión',
+                  body: 'Sin suscripción, sin seguimiento, sin próxima cita.',
+                },
+                {
+                  title: 'Privacidad por diseño',
+                  body: 'Todo se elimina cuando cierras. Nada queda en el servidor.',
+                },
+              ].map(({ title, body }) => (
+                <li
+                  key={title}
+                  className="rounded-xl border border-neutral-200 bg-white p-5"
+                >
+                  <p className="font-semibold text-neutral-900">{title}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-neutral-600">
+                    {body}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
-        <section className="mx-auto max-w-3xl px-6 py-12 sm:py-16">
-          <h2 className="text-2xl font-semibold tracking-tight">Vídeo</h2>
-          <div className="mt-6 aspect-video w-full overflow-hidden rounded-md bg-neutral-200">
-            {videoUrl ? (
+        {/* Vídeo */}
+        {videoUrl && (
+          <section className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400">
+              Vídeo
+            </p>
+            <div className="mt-6 aspect-video w-full overflow-hidden rounded-xl bg-neutral-100">
               <iframe
                 src={videoUrl}
                 title="Vídeo promocional"
@@ -96,27 +160,36 @@ export default function HomePage() {
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
               />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-sm text-neutral-600">
-                Vídeo próximamente
-              </div>
-            )}
+            </div>
+          </section>
+        )}
+
+        {/* Precio */}
+        <section className="border-t border-neutral-100">
+          <div className="mx-auto max-w-3xl px-6 py-16 sm:py-24">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-neutral-400">
+              Precio
+            </p>
+            <p className="mt-5 text-5xl font-light tracking-tight text-neutral-900">
+              {price}
+            </p>
+            <p className="mt-3 text-neutral-500">
+              Una sesión · pago único · sin suscripción
+            </p>
+            <div className="mt-8">
+              <BuyButton />
+            </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-3xl px-6 py-12 sm:py-16">
-          <h2 className="text-2xl font-semibold tracking-tight">Precio</h2>
-          <p className="mt-4 text-2xl font-medium">Una sesión — {price}</p>
-          <p className="mt-3 text-base text-neutral-600">Pago único. Sin suscripción.</p>
-          <div className="mt-10">
-            <BuyButton />
-          </div>
-        </section>
       </main>
 
       <footer className="border-t border-neutral-200">
-        <div className="mx-auto max-w-3xl px-6 py-8 text-sm text-neutral-600">
-          <Link href="/privacidad" className="underline-offset-4 hover:underline">
+        <div className="mx-auto max-w-3xl px-6 py-8 text-sm text-neutral-500">
+          <Link
+            href="/privacidad"
+            className="underline-offset-4 hover:text-neutral-700 hover:underline"
+          >
             Política de privacidad
           </Link>
         </div>

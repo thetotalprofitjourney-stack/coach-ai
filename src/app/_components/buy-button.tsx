@@ -4,10 +4,7 @@ import { useState } from 'react';
 
 type Phase = 'idle' | 'loading' | 'error';
 
-// CTA "Empezar mi sesión". Invoca POST /api/checkout/create (endpoint
-// público del Paso 10) y redirige a la URL hosted de Stripe Checkout.
-// Sin retry automático: un segundo clic tras error vuelve a intentar.
-export default function BuyButton() {
+export default function BuyButton({ variant = 'default' }: { variant?: 'default' | 'light' }) {
   const [phase, setPhase] = useState<Phase>('idle');
 
   async function handleClick() {
@@ -31,18 +28,26 @@ export default function BuyButton() {
 
   const loading = phase === 'loading';
 
+  const btnClass =
+    variant === 'light'
+      ? 'inline-flex items-center justify-center rounded-md bg-white px-6 py-3 text-base font-medium text-stone-900 transition-colors hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60'
+      : 'inline-flex items-center justify-center rounded-md bg-neutral-900 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60';
+
+  const errorClass =
+    variant === 'light' ? 'mt-3 text-sm text-stone-300' : 'mt-3 text-sm text-neutral-600';
+
   return (
     <div className="flex flex-col items-center">
       <button
         type="button"
         onClick={handleClick}
         disabled={loading}
-        className="inline-flex items-center justify-center rounded-md bg-neutral-900 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-500"
+        className={btnClass}
       >
         {loading ? 'Redirigiendo…' : 'Empezar mi sesión'}
       </button>
       {phase === 'error' && (
-        <p className="mt-3 text-sm text-neutral-600" role="alert">
+        <p className={errorClass} role="alert">
           No se ha podido iniciar el pago. Inténtalo de nuevo en unos minutos.
         </p>
       )}
