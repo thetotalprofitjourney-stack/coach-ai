@@ -1,10 +1,15 @@
 import type { Metadata } from 'next';
+import { Lora } from 'next/font/google';
 import './globals.css';
 
-// `metadataBase` resuelve URLs relativas de Open Graph. En prod apunta al
-// dominio público configurado en `APP_PUBLIC_URL` (mismo valor que ya
-// consume el backend para construir `success_url` de Stripe); en dev cae
-// al localhost para que el build local no reviente.
+// Lora se usa exclusivamente para el h1 del hero en la landing (clase
+// font-serif). El resto de la app usa la pila sans por defecto de Tailwind.
+const lora = Lora({
+  subsets: ['latin'],
+  variable: '--font-lora',
+  display: 'swap',
+});
+
 const baseUrl = process.env.APP_PUBLIC_URL ?? 'http://localhost:3000';
 
 export const metadata: Metadata = {
@@ -29,7 +34,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es">
+    <html lang="es" className={lora.variable}>
       <body className="bg-white text-neutral-900 antialiased">{children}</body>
     </html>
   );

@@ -5,10 +5,7 @@ import { useRouter } from 'next/navigation';
 
 type Phase = 'idle' | 'loading' | 'error';
 
-// CTA "Prueba la conversación". Invoca POST /api/preview/start (3 turnos
-// gratis con Haiku) y redirige a /preview/{token} donde vive la demo.
-// Diseño secundario para no competir visualmente con BuyButton.
-export default function PreviewButton() {
+export default function PreviewButton({ variant = 'default' }: { variant?: 'default' | 'light' }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>('idle');
   const [message, setMessage] = useState<string | null>(null);
@@ -48,21 +45,32 @@ export default function PreviewButton() {
 
   const loading = phase === 'loading';
 
+  const btnClass =
+    variant === 'light'
+      ? 'inline-flex items-center justify-center rounded-md border border-white/30 bg-transparent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60'
+      : 'inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-5 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60';
+
+  const noteClass =
+    variant === 'light' ? 'mt-2 text-xs text-stone-400' : 'mt-2 text-xs text-neutral-500';
+
+  const errorClass =
+    variant === 'light' ? 'mt-3 text-sm text-stone-300' : 'mt-3 text-sm text-neutral-600';
+
   return (
     <div className="flex flex-col items-center">
       <button
         type="button"
         onClick={handleClick}
         disabled={loading}
-        className="inline-flex items-center justify-center rounded-md border border-neutral-300 bg-white px-5 py-2.5 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
+        className={btnClass}
       >
         {loading ? 'Abriendo demo…' : 'Prueba la conversación (3 turnos)'}
       </button>
-      <p className="mt-2 text-xs text-neutral-500">
+      <p className={noteClass}>
         Gratis · coach ligero (Haiku) · la sesión completa usa Opus
       </p>
       {phase === 'error' && message && (
-        <p className="mt-3 text-sm text-neutral-600" role="alert">
+        <p className={errorClass} role="alert">
           {message}
         </p>
       )}

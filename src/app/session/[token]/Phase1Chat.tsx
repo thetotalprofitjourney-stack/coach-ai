@@ -13,9 +13,6 @@ import { SupportTicket } from './SupportTicket';
 type Message = {
   role: 'admin' | 'user';
   content: string;
-  // Marcador del último mensaje del usuario cuyo envío falló y está a
-  // la espera de reintento. Mientras sea true, el mensaje se renderiza
-  // con opacidad reducida y aparecen los botones "Reintentar" / "Descartar".
   pending?: boolean;
 };
 
@@ -26,10 +23,16 @@ type Status =
   | { kind: 'synthesizing' }
   | { kind: 'error'; message: string; technical?: string };
 
-// Retraso (ms) tras el cual, si el estado sigue en error, aparece el
-// botón de ticket de soporte. 30 s evita que aparezca tras un fallo
-// fugaz que se resuelva al primer reintento.
 const SUPPORT_THRESHOLD_MS = 30_000;
+
+// Mensaje introductorio que aparece siempre antes del primer ítem DISC.
+// Explica al usuario por qué existe el cuestionario y evita la sensación
+// de desconexión con la sesión de coaching.
+const DISC_INTRO: Message = {
+  role: 'admin',
+  content:
+    'Antes de comenzar la sesión de coaching, necesito hacerte unas preguntas.\n\nLo que vas a encontrar puede parecerte desconectado de la situación que has traído hoy. No lo está: tus respuestas me ayudan a entender cómo tomas decisiones, cómo te relacionas con el entorno y cómo afrontas los momentos de incertidumbre. Sin ese contexto, la sesión sería mucho más superficial.\n\nNo hay respuestas correctas ni incorrectas. Elige la que más se acerque a cómo eres habitualmente, no a cómo te gustaría ser.\n\nSon 16 situaciones. Cuando terminemos, empezamos.',
+};
 
 export function Phase1Chat({
   token,
@@ -40,14 +43,12 @@ export function Phase1Chat({
 }) {
   const router = useRouter();
   const online = useOnlineStatus();
-  const [messages, setMessages] = useState<Message[]>([]);
+  // El intro DISC siempre es el primer mensaje; el administrador lo sigue.
+  const [messages, setMessages] = useState<Message[]>([DISC_INTRO]);
   const [itemIndex, setItemIndex] = useState(0);
   const [done, setDone] = useState(false);
   const inputDraft = useInputDraft(`${token}:phase1-input`);
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
-  // Cuándo entró el estado actual en "error" (epoch ms). Null si no
-  // estamos en error ahora mismo. Se usa para mostrar el soporte tras
-  // SUPPORT_THRESHOLD_MS.
   const [errorSince, setErrorSince] = useState<number | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const bootstrappedRef = useRef(false);
@@ -74,7 +75,7 @@ export function Phase1Chat({
           adminMessage: string;
           itemIndex: number;
         };
-        setMessages([{ role: 'admin', content: data.adminMessage }]);
+        setMessages((m) => [...m, { role: 'admin', content: data.adminMessage }]);
         setItemIndex(data.itemIndex);
         setStatus({ kind: 'ready' });
         setErrorSince(null);
@@ -96,23 +97,16 @@ export function Phase1Chat({
     });
   }, [messages]);
 
-  // Tick de 1s para que `now` avance y el threshold del soporte se
-  // evalúe sin recargar la página. Sólo corre mientras hay error.
   useEffect(() => {
     if (errorSince === null) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [errorSince]);
 
-  // Envía (o reintenta) una respuesta. Si `text` viene explícito se
-  // reutiliza el último pending; si no, se coge del input. Separa
-  // fetch de la manipulación del estado para poder reintentar.
   const doSend = async (text: string, isRetry: boolean) => {
     setStatus({ kind: 'sending' });
     setErrorSince(null);
     if (!isRetry) {
-      // Marca el mensaje optimista como pending; si el envío funciona,
-      // limpiamos el flag más abajo.
       setMessages((m) => [
         ...m,
         { role: 'user', content: text, pending: true },
@@ -145,7 +139,6 @@ export function Phase1Chat({
         done: boolean;
       };
       setMessages((m) => {
-        // Quita el flag `pending` del último user turn, si existe.
         const next = [...m];
         for (let i = next.length - 1; i >= 0; i--) {
           if (next[i].role === 'user' && next[i].pending) {
@@ -182,8 +175,6 @@ export function Phase1Chat({
   };
 
   const discard = () => {
-    // Recupera el texto al input para que el usuario lo edite si quiere;
-    // quita el turno pending y vuelve a ready.
     const pendingIdx = [...messages]
       .map((m, i) => ({ m, i }))
       .reverse()
@@ -203,8 +194,6 @@ export function Phase1Chat({
       const res = await fetch(`/api/session/${token}/phase1/finish`, {
         method: 'POST',
       });
-      // 409: session already completed (gateway closed connection on a previous
-      // attempt but the server finished) — treat as success and navigate forward.
       if (res.status === 409) {
         router.refresh();
         return;
@@ -220,8 +209,6 @@ export function Phase1Chat({
         return;
       }
 
-      // Response is NDJSON: read until {type:"done"} or {type:"error"}.
-      // {type:"ping"} events are keepalives — ignore them.
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buf = '';
@@ -266,11 +253,20 @@ export function Phase1Chat({
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col px-4 py-6 md:py-10">
       <header className="mb-4 flex items-baseline justify-between">
-        <p className="text-sm uppercase tracking-wide text-neutral-500">
-          Coach AI · Fase 1
-        </p>
-        <p className="text-sm text-neutral-600" aria-live="polite">
-          Ítem {Math.min(itemIndex + (done ? 0 : 1), 16)}/16
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.15em] text-neutral-400">
+            Coach AI
+          </p>
+          <p className="mt-0.5 text-sm font-medium text-neutral-700">
+            Cuestionario de perfil
+          </p>
+        </div>
+        <p className="text-sm text-neutral-500" aria-live="polite">
+          {done
+            ? '16 / 16'
+            : status.kind !== 'loading'
+              ? `${Math.min(itemIndex + 1, 16)} / 16`
+              : ''}
         </p>
       </header>
 
@@ -279,25 +275,31 @@ export function Phase1Chat({
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto rounded border border-neutral-200 bg-neutral-50 p-4"
+        className="flex-1 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-4"
         aria-live="polite"
       >
+        {/* Indicador de carga bajo el intro mientras se obtiene el primer ítem */}
         {status.kind === 'loading' && (
-          <p className="text-neutral-600">Cargando el primer ítem…</p>
+          <p className="mb-4 text-xs text-neutral-400">Cargando primer ítem…</p>
         )}
-        <ul className="space-y-4">
+        <ul className="space-y-3">
           {messages.map((m, i) => (
             <li
               key={i}
               className={
                 m.role === 'admin'
-                  ? 'rounded bg-white p-3 text-neutral-900 shadow-sm'
-                  : `rounded bg-neutral-900 p-3 text-white ${m.pending ? 'opacity-60' : ''}`
+                  ? 'rounded-lg bg-white p-4 text-neutral-900 shadow-sm'
+                  : `rounded-lg bg-stone-800 p-4 text-white ${m.pending ? 'opacity-60' : ''}`
               }
             >
-              <p className="whitespace-pre-wrap">{m.content}</p>
+              {m.role === 'admin' && (
+                <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-neutral-400">
+                  Coach
+                </p>
+              )}
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.content}</p>
               {m.pending && (
-                <p className="mt-1 text-xs italic text-white/70">
+                <p className="mt-2 text-xs italic text-white/60">
                   No se pudo enviar — pendiente de reintento.
                 </p>
               )}
@@ -309,7 +311,7 @@ export function Phase1Chat({
       {status.kind === 'error' && (
         <div
           role="alert"
-          className="mt-3 space-y-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
+          className="mt-3 space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800"
         >
           <p>{status.message}</p>
           {hasPending && (
@@ -325,7 +327,7 @@ export function Phase1Chat({
               <button
                 type="button"
                 onClick={discard}
-                className="rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                className="rounded border border-red-200 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
               >
                 Descartar y editar
               </button>
@@ -343,15 +345,15 @@ export function Phase1Chat({
 
       {done ? (
         <div className="mt-4 space-y-3">
-          <p className="text-neutral-700">
-            Has respondido a los 16 ítems. Ahora prepararé tu sesión de
+          <p className="text-sm text-neutral-600">
+            Has completado las 16 situaciones. Ahora prepararé tu sesión de
             coaching.
           </p>
           <button
             type="button"
             onClick={finish}
             disabled={synthesizing || !online}
-            className="w-full rounded bg-neutral-900 px-4 py-3 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {synthesizing
               ? 'Preparando tu sesión de coaching…'
@@ -373,7 +375,7 @@ export function Phase1Chat({
             placeholder="Escribe A, B, C o D (y lo que quieras añadir)…"
             disabled={status.kind !== 'ready' || hasPending}
             aria-label="Tu respuesta"
-            className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 disabled:opacity-60"
+            className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-60"
           />
           <button
             type="submit"
@@ -383,7 +385,7 @@ export function Phase1Chat({
               !online ||
               inputDraft.value.trim().length === 0
             }
-            className="rounded bg-neutral-900 px-4 py-2 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status.kind === 'sending' ? 'Enviando…' : 'Enviar'}
           </button>

@@ -13,8 +13,6 @@ type ChatTurn = {
   role: 'coach' | 'user';
   content: string;
   turnNumber: number;
-  // Último turno del usuario cuyo envío al coach falló; queda esperando
-  // reintento. Se renderiza con opacidad reducida.
   pending?: boolean;
 };
 
@@ -23,14 +21,14 @@ type Status =
   | { kind: 'sending' }
   | { kind: 'streaming' }
   | { kind: 'closing' }
-  | {
-      kind: 'error';
-      message: string;
-      technical?: string;
-    };
+  | { kind: 'error'; message: string; technical?: string };
 
-// Tras 30 s en error, aparece el botón para generar ticket de soporte.
 const SUPPORT_THRESHOLD_MS = 30_000;
+
+// Tope de turnos del coach. Debe coincidir con MAX_COACH_TURNS en
+// render-state.ts (valor 50). No lo importamos aquí para evitar arrastrar
+// dependencias de servidor a un client component.
+const MAX_COACH_TURNS = 50;
 
 export interface Phase2ChatProps {
   token: string;
@@ -78,12 +76,6 @@ export function Phase2Chat({
     setErrorSince(null);
   };
 
-  // `doSend` encapsula la llamada al endpoint de turno. Si `text` ya
-  // está como turno pending en `turns`, no lo re-agregamos (reintento);
-  // si es un envío nuevo, lo añadimos con pending=true y limpiamos el
-  // borrador del input. El flag pending se quita cuando el stream del
-  // coach acaba con éxito; si falla, sigue visible para mostrar los
-  // botones de retry/discard.
   const doSend = async (text: string, isRetry: boolean) => {
     const userTurnNumber = coachTurnNumber;
     const streamingCoachTurnNumber = coachTurnNumber + 1;
@@ -164,9 +156,6 @@ export function Phase2Chat({
               : level;
           setTurns((t) => {
             const next = [...t];
-            // Quita pending del último user turn (el que acabamos de
-            // confirmar) y arregla el turno del coach con el turnNumber
-            // autoritativo del servidor.
             for (let i = next.length - 1; i >= 0; i--) {
               if (next[i].role === 'user' && next[i].pending) {
                 next[i] = { ...next[i], pending: false };
@@ -191,8 +180,6 @@ export function Phase2Chat({
           setLevel(estimatedLevel);
         },
         onError: ({ message, code }) => {
-          // Descarta el turno parcial del coach; el turno del usuario
-          // sigue como pending para permitir reintento sin re-añadirlo.
           setTurns((t) =>
             t.filter(
               (turn) =>
@@ -253,7 +240,7 @@ export function Phase2Chat({
       });
       if (!res.ok) {
         markError(
-          'No se pudo cerrar la sesión. Inténtalo otra vez.',
+          'No se pudo generar el informe. Inténtalo otra vez.',
           `phase2/finish → HTTP ${res.status}`,
         );
         return;
@@ -271,37 +258,56 @@ export function Phase2Chat({
     now - errorSince >= SUPPORT_THRESHOLD_MS &&
     online;
 
+  // Al llegar al tope la sesión ha concluido: el coach ha generado el
+  // resumen y el usuario sólo necesita descargarlo.
+  const sessionConcluded = coachTurnNumber >= MAX_COACH_TURNS;
+
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 py-6 md:py-10">
       <header className="mb-4 flex items-baseline justify-between">
-        <p className="text-sm uppercase tracking-wide text-neutral-500">
-          Coach AI · Sesión
-        </p>
-        <p className="text-sm text-neutral-600" aria-live="polite">
-          {coachTurnNumber}/50 · nivel {level}
-        </p>
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.15em] text-neutral-400">
+            Coach AI
+          </p>
+          <p className="mt-0.5 text-sm font-medium text-neutral-700">
+            Sesión de coaching
+          </p>
+        </div>
+        {/* El nivel de profundización se muestra sólo como referencia interna;
+            el contador de turnos se omite deliberadamente para no generar
+            ansiedad en el usuario durante la sesión. */}
+        {level > 1 && (
+          <p className="text-xs text-neutral-400" aria-hidden="true">
+            profundidad {level}
+          </p>
+        )}
       </header>
 
       <OfflineBanner />
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto rounded border border-neutral-200 bg-neutral-50 p-4"
+        className="flex-1 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50 p-4"
         aria-live="polite"
       >
-        <ul className="space-y-4">
+        <ul className="space-y-3">
           {turns.map((t, i) => (
             <li
               key={`${t.turnNumber}-${t.role}-${i}`}
               className={
                 t.role === 'coach'
-                  ? 'rounded bg-white p-3 text-neutral-900 shadow-sm'
-                  : `rounded bg-neutral-900 p-3 text-white ${t.pending ? 'opacity-60' : ''}`
+                  ? 'rounded-lg bg-white p-4 text-neutral-900 shadow-sm'
+                  : `rounded-lg bg-stone-800 p-4 text-white ${t.pending ? 'opacity-60' : ''}`
               }
             >
-              <p className="whitespace-pre-wrap">{t.content}</p>
+              {t.role === 'coach' && (
+                <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-neutral-400">
+                  Coach
+                </p>
+              )}
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{t.content}</p>
               {t.pending && (
-                <p className="mt-1 text-xs italic text-white/70">
+                <p className="mt-2 text-xs italic text-white/60">
                   Pendiente de enviar — reintenta cuando quieras.
                 </p>
               )}
@@ -313,7 +319,7 @@ export function Phase2Chat({
       {status.kind === 'error' && (
         <div
           role="alert"
-          className="mt-3 space-y-2 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800"
+          className="mt-3 space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800"
         >
           <p>{status.message}</p>
           {hasPending && (
@@ -329,7 +335,7 @@ export function Phase2Chat({
               <button
                 type="button"
                 onClick={discard}
-                className="rounded border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
+                className="rounded border border-red-200 bg-white px-3 py-1 text-xs font-medium text-red-800 hover:bg-red-100"
               >
                 Descartar y editar
               </button>
@@ -345,54 +351,81 @@ export function Phase2Chat({
         </div>
       )}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send();
-        }}
-        className="mt-4 flex gap-2"
-      >
-        <input
-          type="text"
-          value={inputDraft.value}
-          onChange={(e) => inputDraft.setValue(e.target.value)}
-          placeholder="Escribe tu respuesta…"
-          disabled={status.kind !== 'ready' || hasPending}
-          aria-label="Tu respuesta"
-          className="flex-1 rounded border border-neutral-300 bg-white px-3 py-2 text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 disabled:opacity-60"
-        />
-        <button
-          type="submit"
-          disabled={
-            status.kind !== 'ready' ||
-            hasPending ||
-            !online ||
-            inputDraft.value.trim().length === 0
-          }
-          className="rounded bg-neutral-900 px-4 py-2 text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {status.kind === 'sending'
-            ? 'Pensando…'
-            : status.kind === 'streaming'
-              ? 'Escribiendo…'
-              : 'Enviar'}
-        </button>
-      </form>
+      {sessionConcluded ? (
+        /* Estado de cierre natural: la sesión ha llegado a su fin.
+           El coach ha dejado el resumen arriba; ahora el usuario genera
+           su informe cuando esté listo. */
+        <div className="mt-5 space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-5">
+          <p className="text-sm font-medium text-stone-800">
+            La sesión ha concluido
+          </p>
+          <p className="text-sm leading-relaxed text-stone-600">
+            El resumen de lo trabajado está arriba. Cuando estés listo,
+            genera tu informe y descárgalo.
+          </p>
+          <button
+            type="button"
+            onClick={close}
+            disabled={status.kind === 'closing' || !online}
+            className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {status.kind === 'closing'
+              ? 'Generando tu informe…'
+              : 'Generar informe y descargarlo'}
+          </button>
+        </div>
+      ) : (
+        <>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send();
+            }}
+            className="mt-4 flex gap-2"
+          >
+            <input
+              type="text"
+              value={inputDraft.value}
+              onChange={(e) => inputDraft.setValue(e.target.value)}
+              placeholder="Escribe tu respuesta…"
+              disabled={status.kind !== 'ready' || hasPending}
+              aria-label="Tu respuesta"
+              className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-60"
+            />
+            <button
+              type="submit"
+              disabled={
+                status.kind !== 'ready' ||
+                hasPending ||
+                !online ||
+                inputDraft.value.trim().length === 0
+              }
+              className="rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {status.kind === 'sending'
+                ? 'Pensando…'
+                : status.kind === 'streaming'
+                  ? 'Escribiendo…'
+                  : 'Enviar'}
+            </button>
+          </form>
 
-      <button
-        type="button"
-        onClick={close}
-        disabled={
-          status.kind === 'closing' ||
-          status.kind === 'sending' ||
-          status.kind === 'streaming'
-        }
-        className="mt-3 rounded border border-neutral-300 px-4 py-2 text-sm text-neutral-700 transition hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {status.kind === 'closing'
-          ? 'Cerrando sesión…'
-          : 'Cerrar sesión y ver informe'}
-      </button>
+          <button
+            type="button"
+            onClick={close}
+            disabled={
+              status.kind === 'closing' ||
+              status.kind === 'sending' ||
+              status.kind === 'streaming'
+            }
+            className="mt-3 rounded-lg border border-neutral-200 px-4 py-2 text-sm text-neutral-500 transition hover:bg-neutral-50 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {status.kind === 'closing'
+              ? 'Generando tu informe…'
+              : 'Cerrar sesión y ver informe'}
+          </button>
+        </>
+      )}
     </main>
   );
 }
