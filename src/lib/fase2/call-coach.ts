@@ -1,7 +1,7 @@
 import type { MessageCreateParamsNonStreaming, TextBlock } from '@anthropic-ai/sdk/resources/messages';
 import { anthropic } from '@/lib/anthropic/client';
 import { MODELS } from '@/lib/anthropic/models';
-import { FASE2_COACH_SYSTEM_PROMPT } from '@/lib/anthropic/prompts/fase2-coach';
+import { getFase2CoachSystemPrompt } from '@/lib/anthropic/prompts/fase2-coach';
 import { renderDynamicState, renderHandoffBlock } from '@/lib/fase2/render-state';
 import type { RunState } from '@/lib/fase2/types';
 
@@ -108,7 +108,7 @@ function buildRequestParams(state: RunState): MessageCreateParamsNonStreaming {
     system: [
       {
         type: 'text',
-        text: FASE2_COACH_SYSTEM_PROMPT,
+        text: getFase2CoachSystemPrompt(),
         cache_control: { type: 'ephemeral' },
       },
       {

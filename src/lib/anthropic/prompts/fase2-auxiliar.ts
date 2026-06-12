@@ -19,7 +19,8 @@ function loadFase2AuxiliarSystemPrompt(): string {
   return md.slice(start);
 }
 
-export const FASE2_AUXILIAR_SYSTEM_PROMPT = loadFase2AuxiliarSystemPrompt();
+let _f2a: string | null = null;
+export function getFase2AuxiliarSystemPrompt(): string { return _f2a ??= loadFase2AuxiliarSystemPrompt(); }
 
 // Schema del JSON que la auxiliar debe devolver. Se valida con Zod tras
 // extraer el bloque JSON de la respuesta de Haiku.

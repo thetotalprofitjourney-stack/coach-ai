@@ -19,7 +19,8 @@ function loadFase1SintesisSystemPrompt(): string {
   return md.slice(start);
 }
 
-export const FASE1_SINTESIS_SYSTEM_PROMPT = loadFase1SintesisSystemPrompt();
+let _f1s: string | null = null;
+export function getFase1SintesisSystemPrompt(): string { return _f1s ??= loadFase1SintesisSystemPrompt(); }
 
 // Schema del hand-off que debe producir la síntesis. Es la forma exacta
 // del tipo Handoff de src/lib/fase2/types.ts, con restricciones

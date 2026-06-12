@@ -3,7 +3,7 @@ import { anthropic } from '@/lib/anthropic/client';
 import { MODELS } from '@/lib/anthropic/models';
 import {
   AuxiliarOutputSchema,
-  FASE2_AUXILIAR_SYSTEM_PROMPT,
+  getFase2AuxiliarSystemPrompt,
   type AuxiliarOutput,
 } from '@/lib/anthropic/prompts/fase2-auxiliar';
 import type { RunState } from '@/lib/fase2/types';
@@ -37,7 +37,7 @@ export async function callAuxiliar(state: RunState): Promise<AuxiliarResult> {
     system: [
       {
         type: 'text',
-        text: FASE2_AUXILIAR_SYSTEM_PROMPT,
+        text: getFase2AuxiliarSystemPrompt(),
         cache_control: { type: 'ephemeral' },
       },
     ],

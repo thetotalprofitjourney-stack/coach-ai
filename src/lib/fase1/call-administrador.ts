@@ -1,7 +1,7 @@
 import type { TextBlock } from '@anthropic-ai/sdk/resources/messages';
 import { anthropic } from '@/lib/anthropic/client';
 import { MODELS } from '@/lib/anthropic/models';
-import { FASE1_ADMINISTRADOR_SYSTEM_PROMPT } from '@/lib/anthropic/prompts/fase1-administrador';
+import { getFase1AdministradorSystemPrompt } from '@/lib/anthropic/prompts/fase1-administrador';
 import { BANCO_ITEMS_TEXT, formatItemForPrompt, getItemByIndex } from './banco';
 import type { Fase1RunState } from './types';
 
@@ -52,7 +52,7 @@ export async function callAdministrador(
     system: [
       {
         type: 'text',
-        text: FASE1_ADMINISTRADOR_SYSTEM_PROMPT,
+        text: getFase1AdministradorSystemPrompt(),
         cache_control: { type: 'ephemeral' },
       },
       {

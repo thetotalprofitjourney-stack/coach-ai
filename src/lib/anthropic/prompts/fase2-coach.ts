@@ -18,4 +18,5 @@ function loadFase2CoachSystemPrompt(): string {
   return md.slice(start);
 }
 
-export const FASE2_COACH_SYSTEM_PROMPT = loadFase2CoachSystemPrompt();
+let _f2c: string | null = null;
+export function getFase2CoachSystemPrompt(): string { return _f2c ??= loadFase2CoachSystemPrompt(); }

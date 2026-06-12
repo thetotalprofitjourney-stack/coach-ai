@@ -23,5 +23,5 @@ function loadFase1AdministradorSystemPrompt(): string {
   return md.slice(start);
 }
 
-export const FASE1_ADMINISTRADOR_SYSTEM_PROMPT =
-  loadFase1AdministradorSystemPrompt();
+let _f1a: string | null = null;
+export function getFase1AdministradorSystemPrompt(): string { return _f1a ??= loadFase1AdministradorSystemPrompt(); }

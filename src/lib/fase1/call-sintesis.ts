@@ -2,7 +2,7 @@ import type { TextBlock } from '@anthropic-ai/sdk/resources/messages';
 import { anthropic } from '@/lib/anthropic/client';
 import { MODELS } from '@/lib/anthropic/models';
 import {
-  FASE1_SINTESIS_SYSTEM_PROMPT,
+  getFase1SintesisSystemPrompt,
   HandoffSchema,
 } from '@/lib/anthropic/prompts/fase1-sintesis';
 import type { Handoff } from '@/lib/fase2/types';
@@ -54,7 +54,7 @@ export async function callSintesis(
     system: [
       {
         type: 'text',
-        text: `${FASE1_SINTESIS_SYSTEM_PROMPT}\n\nBANCO DE ÍTEMS (referencia cacheada):\n${BANCO_ITEMS_TEXT}`,
+        text: `${getFase1SintesisSystemPrompt()}\n\nBANCO DE ÍTEMS (referencia cacheada):\n${BANCO_ITEMS_TEXT}`,
         cache_control: { type: 'ephemeral' },
       },
     ],
