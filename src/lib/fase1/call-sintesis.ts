@@ -49,7 +49,7 @@ export async function callSintesis(
       type: 'adaptive',
     },
     output_config: {
-      effort: 'high',
+      effort: 'medium',
     },
     system: [
       {

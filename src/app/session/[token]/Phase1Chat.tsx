@@ -203,8 +203,8 @@ export function Phase1Chat({
       const res = await fetch(`/api/session/${token}/phase1/finish`, {
         method: 'POST',
       });
-      // 409 means synthesis already completed (gateway timeout on first attempt
-      // but the server finished) — treat as success and navigate forward.
+      // 409: session already completed (gateway closed connection on a previous
+      // attempt but the server finished) — treat as success and navigate forward.
       if (res.status === 409) {
         router.refresh();
         return;
@@ -219,7 +219,35 @@ export function Phase1Chat({
         setErrorSince(Date.now());
         return;
       }
-      router.refresh();
+
+      // Response is NDJSON: read until {type:"done"} or {type:"error"}.
+      // {type:"ping"} events are keepalives — ignore them.
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop()!;
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const ev = JSON.parse(line) as { type: string; message?: string; code?: string };
+            if (ev.type === 'done') { router.refresh(); return; }
+            if (ev.type === 'error') {
+              setStatus({
+                kind: 'error',
+                message: ev.message ?? 'No se pudo generar el hand-off.',
+                technical: `phase1/finish → error: ${ev.code}`,
+              });
+              setErrorSince(Date.now());
+              break outer;
+            }
+          } catch { /* malformed line, skip */ }
+        }
+      }
     } catch {
       setStatus({
         kind: 'error',
