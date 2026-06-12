@@ -9,11 +9,9 @@ import type { Handoff } from '@/lib/fase2/types';
 import { BANCO_ITEMS_TEXT } from './banco';
 import type { Fase1Answer, Fase1FormularioInicial } from './types';
 
-// Sonnet 4.6 con extended thinking moderado: la síntesis requiere
+// Sonnet 4.6 con extended thinking adaptativo: la síntesis requiere
 // interpretación cruzada (DISC + formulario + freeText) y los hand-offs
-// piloto muestran hipótesis no triviales. max_tokens debe cubrir
-// thinking + el JSON final (el hand-off ronda 1.5-3k tokens).
-const THINKING_BUDGET_TOKENS = 5_000;
+// piloto muestran hipótesis no triviales. max_tokens cubre la respuesta visible.
 const MAX_TOKENS = 12_000;
 
 export interface SintesisUsage {
@@ -48,8 +46,10 @@ export async function callSintesis(
     model: MODELS.sintesisHandoff,
     max_tokens: MAX_TOKENS,
     thinking: {
-      type: 'enabled',
-      budget_tokens: THINKING_BUDGET_TOKENS,
+      type: 'adaptive',
+    },
+    output_config: {
+      effort: 'high',
     },
     system: [
       {

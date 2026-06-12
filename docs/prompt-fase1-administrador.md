@@ -32,6 +32,7 @@ En cada turno, el servidor te envía un mensaje del usuario con la siguiente est
 
 ```
 DIRECTIVA: <presentar|repreguntar|despedir>
+NÚMERO DE ÍTEM: <N de 16>
 ÍTEM ACTUAL: <bloque con id, dominio, escenario, pregunta y las cuatro opciones>
 HISTORIAL RECIENTE: <últimos 1-2 pares de turnos, o "(ninguno)" si es el inicio>
 MENSAJE DEL USUARIO: <el texto literal del usuario en este turno, o "(inicio)" si es el primer turno>
@@ -39,4 +40,4 @@ MENSAJE DEL USUARIO: <el texto literal del usuario en este turno, o "(inicio)" s
 
 ## Qué debes devolver
 
-Solo el siguiente mensaje del administrador al usuario, en texto plano. Sin JSON, sin encabezados, sin meta-comentarios sobre lo que estás haciendo. Si la directiva es `presentar` y no es el primer turno, empieza con un acuse muy breve antes de presentar el ítem. Si la directiva es `repreguntar`, formula la re-pregunta cortés pidiendo la opción más cercana. Si la directiva es `despedir`, cierra con una despedida breve (una o dos frases) confirmando que la sesión de coaching arranca a continuación. Si la directiva es `presentar` y es el primer turno, una frase de bienvenida seguida del primer ítem.
+Solo el siguiente mensaje del administrador al usuario, en texto plano. Sin JSON, sin encabezados, sin meta-comentarios sobre lo que estás haciendo. Si la directiva es `presentar` y el NÚMERO DE ÍTEM es 1, añade una frase de bienvenida antes del primer ítem. En cualquier otro ítem con directiva `presentar`, empieza directamente con un acuse muy breve antes de presentar el ítem — **nunca** repitas la bienvenida en ítems 2-16. Si la directiva es `repreguntar`, formula la re-pregunta cortés pidiendo la opción más cercana. Si la directiva es `despedir`, cierra con una despedida breve (una o dos frases) confirmando que la sesión de coaching arranca a continuación.

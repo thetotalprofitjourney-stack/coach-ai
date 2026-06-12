@@ -203,6 +203,12 @@ export function Phase1Chat({
       const res = await fetch(`/api/session/${token}/phase1/finish`, {
         method: 'POST',
       });
+      // 409 means synthesis already completed (gateway timeout on first attempt
+      // but the server finished) — treat as success and navigate forward.
+      if (res.status === 409) {
+        router.refresh();
+        return;
+      }
       if (!res.ok) {
         setStatus({
           kind: 'error',

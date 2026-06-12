@@ -114,6 +114,7 @@ function buildUserMessage(input: CallAdministradorInput): string {
 
   return [
     `DIRECTIVA: ${directive}`,
+    `NÚMERO DE ÍTEM: ${itemIndex + 1} de 16`,
     `ÍTEM ACTUAL:\n${formatItemForPrompt(item)}`,
     `HISTORIAL RECIENTE:\n${historial}`,
     `MENSAJE DEL USUARIO: ${lastUserMessage.length > 0 ? lastUserMessage : '(inicio)'}`,
