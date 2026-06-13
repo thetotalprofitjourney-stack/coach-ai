@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { consumeCoachStream } from '@/lib/api/coach-stream-client';
 import { useInputDraft } from '@/lib/client/use-input-draft';
 import { useOnlineStatus } from '@/lib/client/use-online-status';
+import { useVoiceInput } from '@/lib/client/use-voice-input';
 import { OfflineBanner } from './OfflineBanner';
 import { SupportTicket } from './SupportTicket';
 
@@ -50,6 +51,20 @@ export function Phase2Chat({
   const [level, setLevel] = useState(initialLevel);
   const inputDraft = useInputDraft(`${token}:phase2-input`);
   const [status, setStatus] = useState<Status>({ kind: 'ready' });
+
+  const { isListening, isSupported, startListening, stopListening } = useVoiceInput(
+    (transcript) => {
+      const current = inputDraft.value;
+      inputDraft.setValue(current ? `${current} ${transcript}` : transcript);
+      setTimeout(() => {
+        const el = textareaRef.current;
+        if (!el) return;
+        el.focus();
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      }, 50);
+    },
+  );
   const [errorSince, setErrorSince] = useState<number | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -389,6 +404,31 @@ export function Phase2Chat({
             }}
             className="mt-4 flex items-end gap-2"
           >
+            {isSupported && (
+              <button
+                type="button"
+                onClick={() => (isListening ? stopListening() : startListening())}
+                disabled={status.kind !== 'ready' || hasPending}
+                aria-label={isListening ? 'Detener grabación' : 'Enviar nota de voz'}
+                aria-pressed={isListening}
+                className={[
+                  'shrink-0 rounded-lg p-2.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+                  isListening
+                    ? 'animate-pulse bg-red-100 text-red-600 hover:bg-red-200'
+                    : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 hover:text-neutral-700',
+                ].join(' ')}
+              >
+                {isListening ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]" aria-hidden="true">
+                    <path d="M5 4a1 1 0 00-1 1v10a1 1 0 001 1h10a1 1 0 001-1V5a1 1 0 00-1-1H5z"/>
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]" aria-hidden="true">
+                    <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"/>
+                  </svg>
+                )}
+              </button>
+            )}
             <textarea
               ref={textareaRef}
               value={inputDraft.value}
@@ -406,7 +446,7 @@ export function Phase2Chat({
                 }
               }}
               rows={1}
-              placeholder="Escribe tu respuesta… (Enter para enviar)"
+              placeholder={isListening ? 'Escuchando…' : 'Escribe tu respuesta… (Enter para enviar)'}
               disabled={status.kind !== 'ready' || hasPending}
               aria-label="Tu respuesta"
               className="flex-1 resize-none overflow-hidden rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 disabled:opacity-60"
@@ -418,6 +458,7 @@ export function Phase2Chat({
                 status.kind !== 'ready' ||
                 hasPending ||
                 !online ||
+                isListening ||
                 inputDraft.value.trim().length === 0
               }
               className="shrink-0 rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
