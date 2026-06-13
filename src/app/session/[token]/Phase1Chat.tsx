@@ -89,6 +89,7 @@ export function Phase1Chat({
 
   const [screen, setScreen] = useState<Screen>('intro');
   const [itemIndex, setItemIndex] = useState(0);
+  const [totalItems, setTotalItems] = useState(16);
   const [selected, setSelected] = useState<DiscLetter | null>(null);
   const [freeText, setFreeText] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
@@ -121,7 +122,7 @@ export function Phase1Chat({
     screen === 'done'
       ? 100
       : screen === 'question'
-        ? ((itemIndex + 1) / 16) * 100
+        ? ((itemIndex + 1) / totalItems) * 100
         : 0;
 
   const currentItem = BANCO_ITEMS[itemIndex] ?? BANCO_ITEMS[0]!;
@@ -148,8 +149,9 @@ export function Phase1Chat({
         setErrorSince(Date.now());
         return;
       }
-      const data = (await res.json()) as { itemIndex: number };
+      const data = (await res.json()) as { itemIndex: number; totalItems: number };
       setItemIndex(data.itemIndex);
+      setTotalItems(data.totalItems);
       setSelected(null);
       setFreeText('');
       setErrorSince(null);
@@ -194,9 +196,11 @@ export function Phase1Chat({
       const data = (await res.json()) as {
         adminMessage: string;
         itemIndex: number;
+        totalItems: number;
         done: boolean;
         parsedLetter: DiscLetter | null;
       };
+      setTotalItems(data.totalItems);
       if (data.done) {
         setScreen('done');
         setStatus({ kind: 'idle' });
@@ -299,7 +303,7 @@ export function Phase1Chat({
           </p>
           {screen === 'question' && (
             <p className="text-xs tabular-nums text-neutral-400">
-              {itemIndex + 1}&nbsp;de&nbsp;16
+              {itemIndex + 1}&nbsp;de&nbsp;{totalItems}
             </p>
           )}
         </div>
@@ -471,7 +475,7 @@ export function Phase1Chat({
           >
             {status.kind === 'sending'
               ? 'Enviando…'
-              : itemIndex < 15
+              : itemIndex < totalItems - 1
                 ? 'Siguiente →'
                 : 'Finalizar cuestionario'}
           </button>
