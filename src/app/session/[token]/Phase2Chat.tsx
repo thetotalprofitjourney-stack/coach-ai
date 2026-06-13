@@ -10,6 +10,14 @@ import { useVoiceInput } from '@/lib/client/use-voice-input';
 import { OfflineBanner } from './OfflineBanner';
 import { SupportTicket } from './SupportTicket';
 
+const SESSION_COMPLETE_MARKER = '[[SESSION_COMPLETE]]';
+
+// Elimina el marcador de cierre del contenido visible. El marcador se almacena
+// en BD para persistir el estado entre recargas, pero nunca se muestra al usuario.
+function stripMarker(text: string): string {
+  return text.replace(SESSION_COMPLETE_MARKER, '').trim();
+}
+
 type ChatTurn = {
   role: 'coach' | 'user';
   content: string;
@@ -46,7 +54,19 @@ export function Phase2Chat({
 }: Phase2ChatProps) {
   const router = useRouter();
   const online = useOnlineStatus();
-  const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
+  const [turns, setTurns] = useState<ChatTurn[]>(() =>
+    initialTurns.map((t) => ({
+      ...t,
+      content: stripMarker(t.content),
+    })),
+  );
+  // Persiste entre recargas: si algún turno del coach en BD contiene el
+  // marcador, la sesión ya concluyó y solo falta que el usuario pulse el botón.
+  const [reportReady, setReportReady] = useState<boolean>(() =>
+    initialTurns.some(
+      (t) => t.role === 'coach' && t.content.includes(SESSION_COMPLETE_MARKER),
+    ),
+  );
   const [coachTurnNumber, setCoachTurnNumber] = useState(initialCoachTurnNumber);
   const [level, setLevel] = useState(initialLevel);
   const inputDraft = useInputDraft(`${token}:phase2-input`);
@@ -84,10 +104,13 @@ export function Phase2Chat({
   }, [errorSince]);
 
   // Auto-foco en el textarea cuando la sesión está lista para recibir
-  // respuesta. Evita que el usuario tenga que hacer clic para empezar a escribir.
+  // respuesta. Solo en dispositivos no táctiles: en móvil el teclado virtual
+  // cubre media pantalla y bloquea el acceso al botón de audio.
   useEffect(() => {
     if (status.kind === 'ready' && coachTurnNumber < MAX_COACH_TURNS) {
-      textareaRef.current?.focus();
+      if (!window.matchMedia('(pointer: coarse)').matches) {
+        textareaRef.current?.focus();
+      }
     }
   });
 
@@ -143,6 +166,8 @@ export function Phase2Chat({
       const streamOk = await consumeCoachStream(res, {
         onDelta: (delta) => {
           streamingContent += delta;
+          // Filtramos el marcador del contenido visible durante el streaming.
+          const display = stripMarker(streamingContent);
           if (!coachPlaceholderInserted) {
             coachPlaceholderInserted = true;
             setStatus({ kind: 'streaming' });
@@ -150,7 +175,7 @@ export function Phase2Chat({
               ...t,
               {
                 role: 'coach',
-                content: streamingContent,
+                content: display,
                 turnNumber: streamingCoachTurnNumber,
               },
             ]);
@@ -163,7 +188,7 @@ export function Phase2Chat({
                 last.role === 'coach' &&
                 last.turnNumber === streamingCoachTurnNumber
               ) {
-                next[next.length - 1] = { ...last, content: streamingContent };
+                next[next.length - 1] = { ...last, content: display };
               }
               return next;
             });
@@ -178,6 +203,9 @@ export function Phase2Chat({
             typeof event.estimatedLevel === 'number'
               ? event.estimatedLevel
               : level;
+          const sessionComplete = event.sessionComplete === true;
+          if (sessionComplete) setReportReady(true);
+          const finalContent = stripMarker(streamingContent.trim());
           setTurns((t) => {
             const next = [...t];
             for (let i = next.length - 1; i >= 0; i--) {
@@ -194,7 +222,7 @@ export function Phase2Chat({
             ) {
               next[next.length - 1] = {
                 ...last,
-                content: streamingContent.trim(),
+                content: finalContent,
                 turnNumber,
               };
             }
@@ -282,9 +310,9 @@ export function Phase2Chat({
     now - errorSince >= SUPPORT_THRESHOLD_MS &&
     online;
 
-  // Al llegar al tope la sesión ha concluido: el coach ha generado el
-  // resumen y el usuario sólo necesita descargarlo.
-  const sessionConcluded = coachTurnNumber >= MAX_COACH_TURNS;
+  // La sesión ha concluido cuando el coach genera el informe (detectado por
+  // parseFinalReport) o cuando se alcanza el tope de turnos.
+  const sessionConcluded = coachTurnNumber >= MAX_COACH_TURNS || reportReady;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 py-6 md:py-10">
@@ -376,14 +404,7 @@ export function Phase2Chat({
         /* Estado de cierre natural: la sesión ha llegado a su fin.
            El coach ha dejado el resumen arriba; ahora el usuario genera
            su informe cuando esté listo. */
-        <div className="mt-5 space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-5">
-          <p className="text-sm font-medium text-stone-800">
-            La sesión ha concluido
-          </p>
-          <p className="text-sm leading-relaxed text-stone-600">
-            El resumen de lo trabajado está arriba. Cuando estés listo,
-            genera tu informe y descárgalo.
-          </p>
+        <div className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-5">
           <button
             type="button"
             onClick={close}
@@ -391,8 +412,8 @@ export function Phase2Chat({
             className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status.kind === 'closing'
-              ? 'Generando tu informe…'
-              : 'Generar informe y descargarlo'}
+              ? 'Preparando el informe…'
+              : 'Revisar el informe de la sesión'}
           </button>
         </div>
       ) : (

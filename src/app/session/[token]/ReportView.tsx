@@ -177,8 +177,16 @@ export function ReportView({
               })}
             </ol>
           ) : (
-            <div className="text-[15px]">
-              {renderMarkdown(report.rawText)}
+            <div className="space-y-3 text-[15px] text-neutral-500">
+              <p className="leading-relaxed">
+                La sesión se cerró antes de que el coach hubiera generado el
+                informe completo. No hay información suficiente sistematizada
+                para elaborarlo.
+              </p>
+              <p className="text-sm text-neutral-400">
+                Si quieres trabajar el objetivo, puedes iniciar una nueva
+                sesión cuando estés listo.
+              </p>
             </div>
           )}
         </div>
