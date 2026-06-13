@@ -1,29 +1,23 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 
-type BuyPhase = 'idle' | 'loading' | 'error';
+// Carga diferida: el SDK de Stripe no se incluye en el bundle inicial.
+const CheckoutModal = dynamic(() => import('./checkout-modal'), { ssr: false });
+
 type PreviewPhase = 'idle' | 'loading' | 'error' | 'ratelimit';
 
 export default function LandingCTAs() {
   const router = useRouter();
-  const [buyPhase, setBuyPhase] = useState<BuyPhase>('idle');
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [previewPhase, setPreviewPhase] = useState<PreviewPhase>('idle');
   const [previewMsg, setPreviewMsg] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
 
-  async function handleBuy() {
-    setBuyPhase('loading');
-    try {
-      const res = await fetch('/api/checkout/create', { method: 'POST' });
-      if (!res.ok) { setBuyPhase('error'); return; }
-      const body = (await res.json()) as { url?: string };
-      if (!body.url) { setBuyPhase('error'); return; }
-      window.location.href = body.url;
-    } catch {
-      setBuyPhase('error');
-    }
+  function handleBuy() {
+    setCheckoutOpen(true);
   }
 
   async function handlePreview() {
@@ -56,11 +50,10 @@ export default function LandingCTAs() {
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
         <button
           type="button"
-          onClick={() => void handleBuy()}
-          disabled={buyPhase === 'loading'}
-          className="rounded-lg bg-stone-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={handleBuy}
+          className="rounded-lg bg-stone-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
         >
-          {buyPhase === 'loading' ? 'Redirigiendo…' : 'Empezar mi sesión'}
+          Empezar mi sesión
         </button>
         <button
           type="button"
@@ -79,15 +72,14 @@ export default function LandingCTAs() {
         </button>
       </div>
 
-      {buyPhase === 'error' && (
-        <p role="alert" className="mt-3 text-sm text-red-600">
-          No se pudo iniciar el pago. Inténtalo de nuevo en unos minutos.
-        </p>
-      )}
       {(previewPhase === 'error' || previewPhase === 'ratelimit') && (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {previewMsg ?? 'No se pudo arrancar la demo. Inténtalo en unos minutos.'}
         </p>
+      )}
+
+      {checkoutOpen && (
+        <CheckoutModal onClose={() => setCheckoutOpen(false)} />
       )}
 
       {infoOpen && (
