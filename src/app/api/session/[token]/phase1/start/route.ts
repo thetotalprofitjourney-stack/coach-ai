@@ -2,6 +2,7 @@ import type { NextRequest } from 'next/server';
 
 import { handleAnthropicError } from '@/lib/api/anthropic-errors';
 import { jsonError, jsonOk } from '@/lib/api/response';
+import { getTotalItems } from '@/lib/fase1/banco';
 import { callAdministrador } from '@/lib/fase1/call-administrador';
 import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { prisma } from '@/lib/prisma';
@@ -32,8 +33,9 @@ export async function POST(
     where: { sessionId: session.id },
   });
   const state = reconstructFase1RunState(session, responses);
+  const totalItems = getTotalItems(state.formulario.reto_dominio);
 
-  if (state.currentItemIndex >= 16) {
+  if (state.currentItemIndex >= totalItems) {
     return jsonError(
       'INVALID_STATE',
       'Todos los ítems ya respondidos. Invoca /phase1/finish.',
@@ -57,7 +59,7 @@ export async function POST(
     return jsonOk({
       adminMessage: admin.text,
       itemIndex: state.currentItemIndex,
-      totalItems: 16,
+      totalItems,
     });
   } catch (err) {
     return handleAnthropicError(err, 'phase1/start');

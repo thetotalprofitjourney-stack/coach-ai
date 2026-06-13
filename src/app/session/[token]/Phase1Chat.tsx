@@ -48,21 +48,34 @@ function CopySessionLink({ url }: { url: string }) {
   }
 
   return (
-    <p className="mt-2 text-center text-xs leading-relaxed text-neutral-400">
-      Antes de empezar, copia el enlace de esta sesión. Si tienes algún problema técnico, podrás retomar en las próximas 24 horas.{' '}
-      <button
-        type="button"
-        onClick={() => void copy()}
-        className="underline underline-offset-2 transition hover:text-neutral-600"
-      >
-        {copied ? '✓ Copiado' : 'Copiar enlace'}
-      </button>
-    </p>
+    <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
+      <p className="text-xs leading-relaxed text-neutral-600">
+        <span className="font-medium">Copia este enlace antes de empezar.</span>{' '}
+        Si la sesión se interrumpe por un problema técnico, podrás retomar pegándolo como dirección en tu navegador.
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="text"
+          readOnly
+          value={url}
+          onFocus={(e) => e.currentTarget.select()}
+          aria-label="Enlace de la sesión"
+          className="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-500 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="shrink-0 rounded-md bg-stone-800 px-3 py-1 text-xs font-medium text-white transition hover:bg-stone-700"
+        >
+          {copied ? '✓ Copiado' : 'Copiar'}
+        </button>
+      </div>
+    </div>
   );
 }
 
 const INTRO_TEXT =
-  'Antes de comenzar la sesión de coaching, necesito hacerte unas preguntas.\n\nLo que vas a encontrar puede parecerte desconectado de la situación que has traído hoy. No lo está: tus respuestas me ayudan a entender cómo tomas decisiones, cómo te relacionas con el entorno y cómo afrontas los momentos de incertidumbre. Sin ese contexto, la sesión sería mucho más superficial.\n\nNo hay respuestas correctas ni incorrectas. Elige la que más se acerque a cómo eres habitualmente, no a cómo te gustaría ser.\n\nSon 16 situaciones. Cuando terminemos, empezamos.';
+  'Antes de comenzar la sesión de coaching, necesito hacerte unas preguntas.\n\nLo que vas a encontrar puede parecerte desconectado de la situación que has traído hoy. No lo está: tus respuestas me ayudan a entender cómo tomas decisiones, cómo te relacionas con el entorno y cómo afrontas los momentos de incertidumbre. Sin ese contexto, la sesión sería mucho más superficial.\n\nNo hay respuestas correctas ni incorrectas. Elige la que más se acerque a cómo eres habitualmente, no a cómo te gustaría ser.';
 
 export function Phase1Chat({
   token,
@@ -76,11 +89,28 @@ export function Phase1Chat({
 
   const [screen, setScreen] = useState<Screen>('intro');
   const [itemIndex, setItemIndex] = useState(0);
+  const [totalItems, setTotalItems] = useState(16);
   const [selected, setSelected] = useState<DiscLetter | null>(null);
   const [freeText, setFreeText] = useState('');
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const [errorSince, setErrorSince] = useState<number | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
+  const [synthMsgIndex, setSynthMsgIndex] = useState(0);
+
+  const SYNTH_MESSAGES = [
+    'El coach está analizando tu perfil…',
+    'Preparando el entorno de la sesión…',
+    'Sigue a la espera, está todo casi listo…',
+  ] as const;
+
+  useEffect(() => {
+    if (status.kind !== 'synthesizing') { setSynthMsgIndex(0); return; }
+    const id = setInterval(
+      () => setSynthMsgIndex((i) => (i + 1) % SYNTH_MESSAGES.length),
+      2500,
+    );
+    return () => clearInterval(id);
+  }, [status.kind]);
 
   useEffect(() => {
     if (errorSince === null) return;
@@ -108,7 +138,7 @@ export function Phase1Chat({
     screen === 'done'
       ? 100
       : screen === 'question'
-        ? ((itemIndex + 1) / 16) * 100
+        ? ((itemIndex + 1) / totalItems) * 100
         : 0;
 
   const currentItem = BANCO_ITEMS[itemIndex] ?? BANCO_ITEMS[0]!;
@@ -135,8 +165,9 @@ export function Phase1Chat({
         setErrorSince(Date.now());
         return;
       }
-      const data = (await res.json()) as { itemIndex: number };
+      const data = (await res.json()) as { itemIndex: number; totalItems: number };
       setItemIndex(data.itemIndex);
+      setTotalItems(data.totalItems);
       setSelected(null);
       setFreeText('');
       setErrorSince(null);
@@ -181,9 +212,11 @@ export function Phase1Chat({
       const data = (await res.json()) as {
         adminMessage: string;
         itemIndex: number;
+        totalItems: number;
         done: boolean;
         parsedLetter: DiscLetter | null;
       };
+      setTotalItems(data.totalItems);
       if (data.done) {
         setScreen('done');
         setStatus({ kind: 'idle' });
@@ -286,7 +319,7 @@ export function Phase1Chat({
           </p>
           {screen === 'question' && (
             <p className="text-xs tabular-nums text-neutral-400">
-              {itemIndex + 1}&nbsp;de&nbsp;16
+              {itemIndex + 1}&nbsp;de&nbsp;{totalItems}
             </p>
           )}
         </div>
@@ -458,7 +491,7 @@ export function Phase1Chat({
           >
             {status.kind === 'sending'
               ? 'Enviando…'
-              : itemIndex < 15
+              : itemIndex < totalItems - 1
                 ? 'Siguiente →'
                 : 'Finalizar cuestionario'}
           </button>
@@ -470,8 +503,15 @@ export function Phase1Chat({
         <div className="flex flex-1 flex-col gap-4 animate-slide-in">
           <div className="rounded-xl bg-white p-6 shadow-sm">
             <p className="text-[15px] leading-[1.75] text-neutral-700">
-              Perfecto. Hemos terminado el cuestionario. Ahora comienza tu
-              sesión de coaching personalizada. ¡Adelante!
+              Con tus respuestas, el coach ya sabe cómo piensas y cómo tomas
+              decisiones.
+            </p>
+            <p className="mt-4 text-[15px] leading-[1.75] text-neutral-700">
+              A partir de ahí, tu sesión será completamente personalizada. No
+              habrá guiones genéricos: cada pregunta estará pensada para ti.
+            </p>
+            <p className="mt-4 text-[15px] leading-[1.75] text-neutral-700">
+              Cuando estés listo, comenzamos.
             </p>
           </div>
 
@@ -489,7 +529,7 @@ export function Phase1Chat({
                     technical={status.technical}
                   />
                 </div>
-          )}
+              )}
             </div>
           )}
 
@@ -500,8 +540,8 @@ export function Phase1Chat({
             className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status.kind === 'synthesizing'
-              ? 'Preparando tu sesión de coaching…'
-              : 'Continuar a la sesión de coaching'}
+              ? SYNTH_MESSAGES[synthMsgIndex]
+              : 'Comenzar mi sesión de coaching'}
           </button>
         </div>
       )}
