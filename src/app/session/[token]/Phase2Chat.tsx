@@ -17,6 +17,7 @@ type ChatTurn = {
   turnNumber: number;
   pending?: boolean;
   isReport?: boolean;
+  closingProse?: string;
 };
 
 type Status =
@@ -49,11 +50,12 @@ export function Phase2Chat({
   const router = useRouter();
   const online = useOnlineStatus();
   const [turns, setTurns] = useState<ChatTurn[]>(() =>
-    initialTurns.map((t) => ({
-      ...t,
-      isReport:
-        t.role === 'coach' && parseFinalReport(t.content).parseStatus === 'parsed',
-    })),
+    initialTurns.map((t) => {
+      if (t.role !== 'coach') return t;
+      const parsed = parseFinalReport(t.content);
+      if (parsed.parseStatus !== 'parsed') return t;
+      return { ...t, isReport: true, closingProse: parsed.closingProse };
+    }),
   );
   const [reportReady, setReportReady] = useState<boolean>(() =>
     initialTurns.some(
@@ -195,8 +197,9 @@ export function Phase2Chat({
               ? event.estimatedLevel
               : level;
           const finalContent = streamingContent.trim();
-          const isReport =
-            parseFinalReport(finalContent).parseStatus === 'parsed';
+          const parsedResult = parseFinalReport(finalContent);
+          const isReport = parsedResult.parseStatus === 'parsed';
+          const closingProse = isReport ? parsedResult.closingProse : undefined;
           if (isReport) setReportReady(true);
           setTurns((t) => {
             const next = [...t];
@@ -217,6 +220,7 @@ export function Phase2Chat({
                 content: finalContent,
                 turnNumber,
                 isReport,
+                closingProse,
               };
             }
             return next;
@@ -330,8 +334,10 @@ export function Phase2Chat({
               className={t.role === 'coach' ? '' : 'flex justify-end'}
             >
               {t.isReport ? (
-                <div className="rounded-xl border border-stone-100 bg-stone-50 px-5 py-4 text-sm text-stone-500">
-                  La sesión ha concluido.
+                <div className="rounded-xl bg-white px-5 py-4 text-neutral-800 shadow-sm">
+                  <p className="whitespace-pre-wrap text-[15px] leading-[1.75]">
+                    {t.closingProse || 'La sesión ha concluido.'}
+                  </p>
                 </div>
               ) : (
                 <div
@@ -403,13 +409,7 @@ export function Phase2Chat({
         /* Estado de cierre natural: la sesión ha llegado a su fin.
            El coach ha dejado el resumen arriba; ahora el usuario genera
            su informe cuando esté listo. */
-        <div className="mt-5 space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-5">
-          <p className="text-sm font-medium text-stone-800">
-            La sesión ha concluido
-          </p>
-          <p className="text-sm leading-relaxed text-stone-600">
-            Cuando estés listo, genera tu informe de la sesión.
-          </p>
+        <div className="mt-5 rounded-xl border border-stone-200 bg-stone-50 p-5">
           <button
             type="button"
             onClick={close}
@@ -417,8 +417,8 @@ export function Phase2Chat({
             className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status.kind === 'closing'
-              ? 'Generando tu informe…'
-              : 'Generar informe'}
+              ? 'Preparando el informe…'
+              : 'Revisar el informe de la sesión'}
           </button>
         </div>
       ) : (

@@ -23,6 +23,10 @@ export type ReportBlockKey = (typeof REPORT_BLOCK_KEYS)[number];
 export type FinalReportContent = {
   parseStatus: 'parsed' | 'raw';
   rawText: string;
+  // Prosa de cierre escrita por el coach antes de los 11 bloques. Solo
+  // presente cuando parseStatus === 'parsed'. Se muestra en el chat en
+  // lugar del informe estructurado completo.
+  closingProse?: string;
   blocks: Partial<Record<ReportBlockKey, string>>;
 };
 
@@ -60,6 +64,7 @@ export function parseFinalReport(text: string): FinalReportContent {
   }
 
   const ordered = Array.from(firstByNumber.entries()).sort((a, b) => a[0] - b[0]);
+  const closingProse = text.slice(0, ordered[0][1].start).trim();
   const blocks: Partial<Record<ReportBlockKey, string>> = {};
   for (let i = 0; i < ordered.length; i++) {
     const [number, pos] = ordered[i];
@@ -69,7 +74,7 @@ export function parseFinalReport(text: string): FinalReportContent {
     blocks[key] = stripTrailingStars(body);
   }
 
-  return { parseStatus: 'parsed', rawText: text, blocks };
+  return { parseStatus: 'parsed', rawText: text, closingProse, blocks };
 }
 
 function stripTrailingStars(s: string): string {
