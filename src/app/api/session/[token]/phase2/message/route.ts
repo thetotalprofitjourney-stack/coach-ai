@@ -6,6 +6,7 @@ import { jsonError } from '@/lib/api/response';
 import { ndjsonStreamResponse } from '@/lib/api/ndjson-stream';
 import { callAuxiliar } from '@/lib/fase2/call-auxiliar';
 import { callCoachStream } from '@/lib/fase2/call-coach';
+import { SESSION_COMPLETE_MARKER } from '@/lib/fase2/generate-report';
 import type { RunState } from '@/lib/fase2/types';
 import { recordLlmCall } from '@/lib/metrics/llm-calls';
 import { prisma } from '@/lib/prisma';
@@ -212,8 +213,8 @@ export async function POST(
     emit({
       type: 'done',
       turnNumber: nextCoachTurnNumber,
-      totalTurns: 50,
       estimatedLevel: auxiliarOutput.nivel_estimado,
+      sessionComplete: coachResult.text.includes(SESSION_COMPLETE_MARKER),
     });
   });
 }

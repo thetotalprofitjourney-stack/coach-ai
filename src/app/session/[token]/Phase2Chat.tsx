@@ -7,17 +7,22 @@ import { consumeCoachStream } from '@/lib/api/coach-stream-client';
 import { useInputDraft } from '@/lib/client/use-input-draft';
 import { useOnlineStatus } from '@/lib/client/use-online-status';
 import { useVoiceInput } from '@/lib/client/use-voice-input';
-import { parseFinalReport } from '@/lib/fase2/parse-report';
 import { OfflineBanner } from './OfflineBanner';
 import { SupportTicket } from './SupportTicket';
+
+const SESSION_COMPLETE_MARKER = '[[SESSION_COMPLETE]]';
+
+// Elimina el marcador de cierre del contenido visible. El marcador se almacena
+// en BD para persistir el estado entre recargas, pero nunca se muestra al usuario.
+function stripMarker(text: string): string {
+  return text.replace(SESSION_COMPLETE_MARKER, '').trim();
+}
 
 type ChatTurn = {
   role: 'coach' | 'user';
   content: string;
   turnNumber: number;
   pending?: boolean;
-  isReport?: boolean;
-  closingProse?: string;
 };
 
 type Status =
@@ -50,16 +55,16 @@ export function Phase2Chat({
   const router = useRouter();
   const online = useOnlineStatus();
   const [turns, setTurns] = useState<ChatTurn[]>(() =>
-    initialTurns.map((t) => {
-      if (t.role !== 'coach') return t;
-      const parsed = parseFinalReport(t.content);
-      if (parsed.parseStatus !== 'parsed') return t;
-      return { ...t, isReport: true, closingProse: parsed.closingProse };
-    }),
+    initialTurns.map((t) => ({
+      ...t,
+      content: stripMarker(t.content),
+    })),
   );
+  // Persiste entre recargas: si algún turno del coach en BD contiene el
+  // marcador, la sesión ya concluyó y solo falta que el usuario pulse el botón.
   const [reportReady, setReportReady] = useState<boolean>(() =>
     initialTurns.some(
-      (t) => t.role === 'coach' && parseFinalReport(t.content).parseStatus === 'parsed',
+      (t) => t.role === 'coach' && t.content.includes(SESSION_COMPLETE_MARKER),
     ),
   );
   const [coachTurnNumber, setCoachTurnNumber] = useState(initialCoachTurnNumber);
@@ -161,6 +166,8 @@ export function Phase2Chat({
       const streamOk = await consumeCoachStream(res, {
         onDelta: (delta) => {
           streamingContent += delta;
+          // Filtramos el marcador del contenido visible durante el streaming.
+          const display = stripMarker(streamingContent);
           if (!coachPlaceholderInserted) {
             coachPlaceholderInserted = true;
             setStatus({ kind: 'streaming' });
@@ -168,7 +175,7 @@ export function Phase2Chat({
               ...t,
               {
                 role: 'coach',
-                content: streamingContent,
+                content: display,
                 turnNumber: streamingCoachTurnNumber,
               },
             ]);
@@ -181,7 +188,7 @@ export function Phase2Chat({
                 last.role === 'coach' &&
                 last.turnNumber === streamingCoachTurnNumber
               ) {
-                next[next.length - 1] = { ...last, content: streamingContent };
+                next[next.length - 1] = { ...last, content: display };
               }
               return next;
             });
@@ -196,11 +203,9 @@ export function Phase2Chat({
             typeof event.estimatedLevel === 'number'
               ? event.estimatedLevel
               : level;
-          const finalContent = streamingContent.trim();
-          const parsedResult = parseFinalReport(finalContent);
-          const isReport = parsedResult.parseStatus === 'parsed';
-          const closingProse = isReport ? parsedResult.closingProse : undefined;
-          if (isReport) setReportReady(true);
+          const sessionComplete = event.sessionComplete === true;
+          if (sessionComplete) setReportReady(true);
+          const finalContent = stripMarker(streamingContent.trim());
           setTurns((t) => {
             const next = [...t];
             for (let i = next.length - 1; i >= 0; i--) {
@@ -219,8 +224,6 @@ export function Phase2Chat({
                 ...last,
                 content: finalContent,
                 turnNumber,
-                isReport,
-                closingProse,
               };
             }
             return next;
@@ -333,30 +336,22 @@ export function Phase2Chat({
               key={`${t.turnNumber}-${t.role}-${i}`}
               className={t.role === 'coach' ? '' : 'flex justify-end'}
             >
-              {t.isReport ? (
-                <div className="rounded-xl bg-white px-5 py-4 text-neutral-800 shadow-sm">
-                  <p className="whitespace-pre-wrap text-[15px] leading-[1.75]">
-                    {t.closingProse || 'La sesión ha concluido.'}
+              <div
+                className={
+                  t.role === 'coach'
+                    ? 'rounded-xl bg-white px-5 py-4 text-neutral-800 shadow-sm'
+                    : `max-w-[85%] rounded-xl bg-stone-100 px-5 py-4 text-neutral-800 ${t.pending ? 'opacity-50' : ''}`
+                }
+              >
+                <p className="whitespace-pre-wrap text-[15px] leading-[1.75]">
+                  {t.content}
+                </p>
+                {t.pending && (
+                  <p className="mt-2 text-xs text-stone-400">
+                    Pendiente de enviar — reintenta cuando quieras.
                   </p>
-                </div>
-              ) : (
-                <div
-                  className={
-                    t.role === 'coach'
-                      ? 'rounded-xl bg-white px-5 py-4 text-neutral-800 shadow-sm'
-                      : `max-w-[85%] rounded-xl bg-stone-100 px-5 py-4 text-neutral-800 ${t.pending ? 'opacity-50' : ''}`
-                  }
-                >
-                  <p className="whitespace-pre-wrap text-[15px] leading-[1.75]">
-                    {t.content}
-                  </p>
-                  {t.pending && (
-                    <p className="mt-2 text-xs text-stone-400">
-                      Pendiente de enviar — reintenta cuando quieras.
-                    </p>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </li>
           ))}
           {/* Indicador de escritura del coach */}
