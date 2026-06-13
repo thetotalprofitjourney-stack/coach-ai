@@ -48,21 +48,34 @@ function CopySessionLink({ url }: { url: string }) {
   }
 
   return (
-    <p className="mt-2 text-center text-xs leading-relaxed text-neutral-400">
-      Antes de empezar, copia el enlace de esta sesión. Si tienes algún problema técnico, podrás retomar en las próximas 24 horas.{' '}
-      <button
-        type="button"
-        onClick={() => void copy()}
-        className="underline underline-offset-2 transition hover:text-neutral-600"
-      >
-        {copied ? '✓ Copiado' : 'Copiar enlace'}
-      </button>
-    </p>
+    <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
+      <p className="text-xs leading-relaxed text-neutral-600">
+        <span className="font-medium">Copia este enlace antes de empezar.</span>{' '}
+        Si la sesión se interrumpe por un problema técnico, podrás retomar pegándolo como dirección en tu navegador.
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="text"
+          readOnly
+          value={url}
+          onFocus={(e) => e.currentTarget.select()}
+          aria-label="Enlace de la sesión"
+          className="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-500 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="shrink-0 rounded-md bg-stone-800 px-3 py-1 text-xs font-medium text-white transition hover:bg-stone-700"
+        >
+          {copied ? '✓ Copiado' : 'Copiar'}
+        </button>
+      </div>
+    </div>
   );
 }
 
 const INTRO_TEXT =
-  'Antes de comenzar la sesión de coaching, necesito hacerte unas preguntas.\n\nLo que vas a encontrar puede parecerte desconectado de la situación que has traído hoy. No lo está: tus respuestas me ayudan a entender cómo tomas decisiones, cómo te relacionas con el entorno y cómo afrontas los momentos de incertidumbre. Sin ese contexto, la sesión sería mucho más superficial.\n\nNo hay respuestas correctas ni incorrectas. Elige la que más se acerque a cómo eres habitualmente, no a cómo te gustaría ser.\n\nSon 16 situaciones. Cuando terminemos, empezamos.';
+  'Antes de comenzar la sesión de coaching, necesito hacerte unas preguntas.\n\nLo que vas a encontrar puede parecerte desconectado de la situación que has traído hoy. No lo está: tus respuestas me ayudan a entender cómo tomas decisiones, cómo te relacionas con el entorno y cómo afrontas los momentos de incertidumbre. Sin ese contexto, la sesión sería mucho más superficial.\n\nNo hay respuestas correctas ni incorrectas. Elige la que más se acerque a cómo eres habitualmente, no a cómo te gustaría ser.';
 
 export function Phase1Chat({
   token,
