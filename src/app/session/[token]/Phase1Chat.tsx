@@ -487,8 +487,15 @@ export function Phase1Chat({
         <div className="flex flex-1 flex-col gap-4 animate-slide-in">
           <div className="rounded-xl bg-white p-6 shadow-sm">
             <p className="text-[15px] leading-[1.75] text-neutral-700">
-              Perfecto. Hemos terminado el cuestionario. Ahora comienza tu
-              sesión de coaching personalizada. ¡Adelante!
+              Con tus respuestas, el coach ya sabe cómo piensas y cómo tomas
+              decisiones.
+            </p>
+            <p className="mt-4 text-[15px] leading-[1.75] text-neutral-700">
+              A partir de ahí, tu sesión será completamente personalizada. No
+              habrá guiones genéricos: cada pregunta estará pensada para ti.
+            </p>
+            <p className="mt-4 text-[15px] leading-[1.75] text-neutral-700">
+              Cuando estés listo, comenzamos.
             </p>
           </div>
 
@@ -506,7 +513,7 @@ export function Phase1Chat({
                     technical={status.technical}
                   />
                 </div>
-          )}
+              )}
             </div>
           )}
 
@@ -517,8 +524,8 @@ export function Phase1Chat({
             className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status.kind === 'synthesizing'
-              ? 'Preparando tu sesión de coaching…'
-              : 'Continuar a la sesión de coaching'}
+              ? 'Preparando tu sesión… no cierres esta página'
+              : 'Comenzar mi sesión de coaching'}
           </button>
         </div>
       )}
