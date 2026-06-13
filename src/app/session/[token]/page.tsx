@@ -30,9 +30,7 @@ export default async function SessionPage({
   if (!session) notFound();
 
   // Datos del aviso de retomar (URL pública + expiresAt). Se renderiza
-  // en los tres screens de entrada (InitialForm, Phase1Chat,
-  // Phase2Bootstrap). No aparece ni en Phase2Chat ni en ReportView
-  // ni en la sesión cerrada.
+  // solo en Phase1Chat (pantalla intro). No aparece en fases posteriores.
   const resumeLink = buildResumeLinkData(tokenParse.data, session.createdAt);
 
   switch (session.status) {
@@ -42,7 +40,7 @@ export default async function SessionPage({
       return <Phase1Chat token={tokenParse.data} resumeLink={resumeLink} />;
     case 'phase1_completed':
       return (
-        <Phase2Bootstrap token={tokenParse.data} resumeLink={resumeLink} />
+        <Phase2Bootstrap token={tokenParse.data} />
       );
     case 'phase2_in_progress': {
       const [turnRows, stateRow] = await Promise.all([

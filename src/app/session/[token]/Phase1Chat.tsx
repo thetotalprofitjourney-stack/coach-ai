@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { useOnlineStatus } from '@/lib/client/use-online-status';
 import type { ResumeLinkData } from '@/lib/session/resume-link';
 import { OfflineBanner } from './OfflineBanner';
-import { ResumeLinkNotice } from './ResumeLinkNotice';
 import { SupportTicket } from './SupportTicket';
 
 // Banco de ítems importado directamente para renderizar preguntas como UI
@@ -36,6 +35,31 @@ type Status =
   | { kind: 'error'; message: string; technical?: string };
 
 const SUPPORT_THRESHOLD_MS = 30_000;
+
+function CopySessionLink({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* el usuario puede copiar la URL manualmente */ }
+  }
+
+  return (
+    <p className="mt-2 text-center text-xs leading-relaxed text-neutral-400">
+      Antes de empezar, copia el enlace de esta sesión. Si tienes algún problema técnico, podrás retomar en las próximas 24 horas.{' '}
+      <button
+        type="button"
+        onClick={() => void copy()}
+        className="underline underline-offset-2 transition hover:text-neutral-600"
+      >
+        {copied ? '✓ Copiado' : 'Copiar enlace'}
+      </button>
+    </p>
+  );
+}
 
 const INTRO_TEXT =
   'Antes de comenzar la sesión de coaching, necesito hacerte unas preguntas.\n\nLo que vas a encontrar puede parecerte desconectado de la situación que has traído hoy. No lo está: tus respuestas me ayudan a entender cómo tomas decisiones, cómo te relacionas con el entorno y cómo afrontas los momentos de incertidumbre. Sin ese contexto, la sesión sería mucho más superficial.\n\nNo hay respuestas correctas ni incorrectas. Elige la que más se acerque a cómo eres habitualmente, no a cómo te gustaría ser.\n\nSon 16 situaciones. Cuando terminemos, empezamos.';
@@ -281,7 +305,6 @@ export function Phase1Chat({
         </div>
       </header>
 
-      <ResumeLinkNotice url={resumeLink.url} expiresAt={resumeLink.expiresAt} />
       <OfflineBanner />
 
       {/* ── Pantalla: intro ─────────────────────────────────────────────── */}
@@ -319,6 +342,7 @@ export function Phase1Chat({
           >
             {status.kind === 'loading' ? 'Cargando…' : 'Empezamos'}
           </button>
+          <CopySessionLink url={resumeLink.url} />
         </div>
       )}
 

@@ -66,16 +66,16 @@ export default function LandingCTAs() {
           type="button"
           onClick={() => void handlePreview()}
           disabled={previewPhase === 'loading'}
-          className="rounded-lg border border-neutral-200 bg-white px-5 py-3 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          className="hidden rounded-lg border border-neutral-200 bg-white px-5 py-3 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {previewPhase === 'loading' ? 'Abriendo demo…' : 'Probar la demo'}
         </button>
         <button
           type="button"
           onClick={() => setInfoOpen(true)}
-          className="rounded-lg px-5 py-3 text-sm text-neutral-500 transition hover:text-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
+          className="rounded-lg border border-neutral-200 bg-white px-5 py-3 text-sm font-medium text-neutral-800 transition hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2"
         >
-          ¿Qué es esto?
+          ¿Cómo funciona?
         </button>
       </div>
 
@@ -123,8 +123,10 @@ export default function LandingCTAs() {
 
             <div className="mt-5 space-y-3 text-sm leading-relaxed text-neutral-600">
               <p>
-                Empieza con 16 situaciones de perfil para que el coach te entienda.
-                Luego, una sesión de coaching de 40–50 minutos sobre la decisión que has traído.
+                Antes de empezar, el coach te hace unas preguntas para entenderte un poco. No tienen que ver con tu situación: son para conocer cómo piensas y tomas decisiones.
+              </p>
+              <p>
+                Después viene una sesión de descubrimiento guiada sobre lo que has traído: una decisión pendiente, un bloqueo, algo que no termina de encajar. Dedica el tiempo que necesites, sin prisa.
               </p>
               <p>
                 No hay consejos que no pediste. No hay juicios.

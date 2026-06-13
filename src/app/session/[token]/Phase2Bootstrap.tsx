@@ -4,15 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { consumeCoachStream } from '@/lib/api/coach-stream-client';
-import type { ResumeLinkData } from '@/lib/session/resume-link';
-import { ResumeLinkNotice } from './ResumeLinkNotice';
 
 export function Phase2Bootstrap({
   token,
-  resumeLink,
 }: {
   token: string;
-  resumeLink: ResumeLinkData;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -108,12 +104,6 @@ export function Phase2Bootstrap({
       <p className="mt-3 text-sm leading-relaxed text-neutral-500">
         Estoy leyendo el cuestionario de perfil. Esto puede tardar un minuto.
       </p>
-      <div className="mt-6 text-left">
-        <ResumeLinkNotice
-          url={resumeLink.url}
-          expiresAt={resumeLink.expiresAt}
-        />
-      </div>
       {error && (
         <p
           role="alert"
