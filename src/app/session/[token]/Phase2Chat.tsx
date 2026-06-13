@@ -97,10 +97,13 @@ export function Phase2Chat({
   }, [errorSince]);
 
   // Auto-foco en el textarea cuando la sesión está lista para recibir
-  // respuesta. Evita que el usuario tenga que hacer clic para empezar a escribir.
+  // respuesta. Solo en dispositivos no táctiles: en móvil el teclado virtual
+  // cubre media pantalla y bloquea el acceso al botón de audio.
   useEffect(() => {
     if (status.kind === 'ready' && coachTurnNumber < MAX_COACH_TURNS) {
-      textareaRef.current?.focus();
+      if (!window.matchMedia('(pointer: coarse)').matches) {
+        textareaRef.current?.focus();
+      }
     }
   });
 
