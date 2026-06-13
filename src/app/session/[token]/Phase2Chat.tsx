@@ -7,6 +7,7 @@ import { consumeCoachStream } from '@/lib/api/coach-stream-client';
 import { useInputDraft } from '@/lib/client/use-input-draft';
 import { useOnlineStatus } from '@/lib/client/use-online-status';
 import { useVoiceInput } from '@/lib/client/use-voice-input';
+import { parseFinalReport } from '@/lib/fase2/parse-report';
 import { OfflineBanner } from './OfflineBanner';
 import { SupportTicket } from './SupportTicket';
 
@@ -15,6 +16,7 @@ type ChatTurn = {
   content: string;
   turnNumber: number;
   pending?: boolean;
+  isReport?: boolean;
 };
 
 type Status =
@@ -46,7 +48,18 @@ export function Phase2Chat({
 }: Phase2ChatProps) {
   const router = useRouter();
   const online = useOnlineStatus();
-  const [turns, setTurns] = useState<ChatTurn[]>(initialTurns);
+  const [turns, setTurns] = useState<ChatTurn[]>(() =>
+    initialTurns.map((t) => ({
+      ...t,
+      isReport:
+        t.role === 'coach' && parseFinalReport(t.content).parseStatus === 'parsed',
+    })),
+  );
+  const [reportReady, setReportReady] = useState<boolean>(() =>
+    initialTurns.some(
+      (t) => t.role === 'coach' && parseFinalReport(t.content).parseStatus === 'parsed',
+    ),
+  );
   const [coachTurnNumber, setCoachTurnNumber] = useState(initialCoachTurnNumber);
   const [level, setLevel] = useState(initialLevel);
   const inputDraft = useInputDraft(`${token}:phase2-input`);
@@ -178,6 +191,10 @@ export function Phase2Chat({
             typeof event.estimatedLevel === 'number'
               ? event.estimatedLevel
               : level;
+          const finalContent = streamingContent.trim();
+          const isReport =
+            parseFinalReport(finalContent).parseStatus === 'parsed';
+          if (isReport) setReportReady(true);
           setTurns((t) => {
             const next = [...t];
             for (let i = next.length - 1; i >= 0; i--) {
@@ -194,8 +211,9 @@ export function Phase2Chat({
             ) {
               next[next.length - 1] = {
                 ...last,
-                content: streamingContent.trim(),
+                content: finalContent,
                 turnNumber,
+                isReport,
               };
             }
             return next;
@@ -282,9 +300,9 @@ export function Phase2Chat({
     now - errorSince >= SUPPORT_THRESHOLD_MS &&
     online;
 
-  // Al llegar al tope la sesión ha concluido: el coach ha generado el
-  // resumen y el usuario sólo necesita descargarlo.
-  const sessionConcluded = coachTurnNumber >= MAX_COACH_TURNS;
+  // La sesión ha concluido cuando el coach genera el informe (detectado por
+  // parseFinalReport) o cuando se alcanza el tope de turnos.
+  const sessionConcluded = coachTurnNumber >= MAX_COACH_TURNS || reportReady;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 py-6 md:py-10">
@@ -308,22 +326,28 @@ export function Phase2Chat({
               key={`${t.turnNumber}-${t.role}-${i}`}
               className={t.role === 'coach' ? '' : 'flex justify-end'}
             >
-              <div
-                className={
-                  t.role === 'coach'
-                    ? 'rounded-xl bg-white px-5 py-4 text-neutral-800 shadow-sm'
-                    : `max-w-[85%] rounded-xl bg-stone-100 px-5 py-4 text-neutral-800 ${t.pending ? 'opacity-50' : ''}`
-                }
-              >
-                <p className="whitespace-pre-wrap text-[15px] leading-[1.75]">
-                  {t.content}
-                </p>
-                {t.pending && (
-                  <p className="mt-2 text-xs text-stone-400">
-                    Pendiente de enviar — reintenta cuando quieras.
+              {t.isReport ? (
+                <div className="rounded-xl border border-stone-100 bg-stone-50 px-5 py-4 text-sm text-stone-500">
+                  La sesión ha concluido.
+                </div>
+              ) : (
+                <div
+                  className={
+                    t.role === 'coach'
+                      ? 'rounded-xl bg-white px-5 py-4 text-neutral-800 shadow-sm'
+                      : `max-w-[85%] rounded-xl bg-stone-100 px-5 py-4 text-neutral-800 ${t.pending ? 'opacity-50' : ''}`
+                  }
+                >
+                  <p className="whitespace-pre-wrap text-[15px] leading-[1.75]">
+                    {t.content}
                   </p>
-                )}
-              </div>
+                  {t.pending && (
+                    <p className="mt-2 text-xs text-stone-400">
+                      Pendiente de enviar — reintenta cuando quieras.
+                    </p>
+                  )}
+                </div>
+              )}
             </li>
           ))}
           {/* Indicador de escritura del coach */}
@@ -381,8 +405,7 @@ export function Phase2Chat({
             La sesión ha concluido
           </p>
           <p className="text-sm leading-relaxed text-stone-600">
-            El resumen de lo trabajado está arriba. Cuando estés listo,
-            genera tu informe y descárgalo.
+            Cuando estés listo, genera tu informe de la sesión.
           </p>
           <button
             type="button"
@@ -392,7 +415,7 @@ export function Phase2Chat({
           >
             {status.kind === 'closing'
               ? 'Generando tu informe…'
-              : 'Generar informe y descargarlo'}
+              : 'Generar informe'}
           </button>
         </div>
       ) : (

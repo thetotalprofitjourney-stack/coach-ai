@@ -27,9 +27,10 @@ export type FinalReportContent = {
 };
 
 // Regex que captura el inicio de cada bloque numerado del 1 al 11. Acepta
-// encabezados con o sin `**`, precedidos opcionalmente por `#` markdown.
+// encabezados con o sin `**`, precedidos opcionalmente por `#` markdown o
+// por `**` antes del número (formato `**1. Título.**` que emite el coach).
 // El grupo 1 es el número, el grupo 2 es todo lo demás en la línea.
-const BLOCK_HEADER_RE = /^\s*(?:#{1,4}\s*)?(\d{1,2})\.\s+\*?\*?([^\n]*)/gm;
+const BLOCK_HEADER_RE = /^\s*(?:#{1,4}\s*)?(?:\*{1,2}\s*)?(\d{1,2})\.\s+\*?\*?([^\n]*)/gm;
 
 export function parseFinalReport(text: string): FinalReportContent {
   const matches: Array<{ number: number; start: number; headerEnd: number }> = [];
