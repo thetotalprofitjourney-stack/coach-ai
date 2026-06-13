@@ -95,6 +95,22 @@ export function Phase1Chat({
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
   const [errorSince, setErrorSince] = useState<number | null>(null);
   const [now, setNow] = useState<number>(() => Date.now());
+  const [synthMsgIndex, setSynthMsgIndex] = useState(0);
+
+  const SYNTH_MESSAGES = [
+    'Analizando tus respuestas…',
+    'Preparando tu sesión personalizada…',
+    'No cierres esta página, casi listo…',
+  ] as const;
+
+  useEffect(() => {
+    if (status.kind !== 'synthesizing') { setSynthMsgIndex(0); return; }
+    const id = setInterval(
+      () => setSynthMsgIndex((i) => (i + 1) % SYNTH_MESSAGES.length),
+      2500,
+    );
+    return () => clearInterval(id);
+  }, [status.kind]);
 
   useEffect(() => {
     if (errorSince === null) return;
@@ -524,7 +540,7 @@ export function Phase1Chat({
             className="w-full rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {status.kind === 'synthesizing'
-              ? 'Preparando tu sesión… no cierres esta página'
+              ? SYNTH_MESSAGES[synthMsgIndex]
               : 'Comenzar mi sesión de coaching'}
           </button>
         </div>
