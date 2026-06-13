@@ -98,9 +98,9 @@ export function Phase1Chat({
   const [synthMsgIndex, setSynthMsgIndex] = useState(0);
 
   const SYNTH_MESSAGES = [
-    'Analizando tus respuestas…',
-    'Preparando tu sesión personalizada…',
-    'No cierres esta página, casi listo…',
+    'El coach está analizando tu perfil…',
+    'Preparando el entorno de la sesión…',
+    'Sigue a la espera, está todo casi listo…',
   ] as const;
 
   useEffect(() => {
